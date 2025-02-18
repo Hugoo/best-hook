@@ -3,7 +3,7 @@ pragma solidity ^0.8.26;
 
 import {BaseHook} from "v4-periphery/src/utils/BaseHook.sol";
 
-// import {CurrencyLibrary, Currency} from "v4-core/types/Currency.sol";
+import {CurrencyLibrary, Currency} from "v4-core/types/Currency.sol";
 import {PoolKey} from "v4-core/types/PoolKey.sol";
 import {BalanceDeltaLibrary, BalanceDelta} from "v4-core/types/BalanceDelta.sol";
 import {toBeforeSwapDelta, BeforeSwapDelta, BeforeSwapDeltaLibrary} from "v4-core/types/BeforeSwapDelta.sol";
@@ -34,7 +34,7 @@ contract MEVCapturingHook is BaseHook {
             afterSwap: false,
             beforeDonate: false,
             afterDonate: false,
-            beforeSwapReturnDelta: false,
+            beforeSwapReturnDelta: true,
             afterSwapReturnDelta: false,
             afterAddLiquidityReturnDelta: false,
             afterRemoveLiquidityReturnDelta: false
@@ -46,13 +46,17 @@ contract MEVCapturingHook is BaseHook {
         override
         returns (bytes4, BeforeSwapDelta, uint24)
     {
-        // make constant
-        // uint256 MPS = 1e7; // milli bassis points
+        // take a fee based on the priority fee
+        // and donate it to LP
+
+
         uint256 BASE_AMOUNT = 1 wei; // ?? this is too low
         uint256 priorityFee = tx.gasprice - block.basefee;
         uint256 fee = priorityFee * BASE_AMOUNT;
 
-        // check input token
+        // TODO: only charge fee in first swap of the block
+        // TODO: only charge dynamic fee if priority fee > some threshold
+
         if (params.zeroForOne) {
             manager.donate(key, fee, 0, "");
         } else {

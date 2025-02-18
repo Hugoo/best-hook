@@ -48,7 +48,7 @@ contract MEVCapturingHookTest is Test, Deployers {
 
         // Deploy our hook
         uint160 flags = uint160(
-            Hooks.BEFORE_SWAP_FLAG
+            Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG
         );
         address hookAddress = address(flags);
 
@@ -71,23 +71,17 @@ contract MEVCapturingHookTest is Test, Deployers {
 
     }
 
-    // TODO: tests
-    function test_sample() public {
-        assertEq(true, true);
-    }
-
-    function test_addLiquidityAndSwap() public {
-        console.log(token0.balanceOfSelf());
-        console.log(token1.balanceOfSelf());
-
+    function test_prioritySwap() public {
         deal(Currency.unwrap(token0), alice.addr, 2 ether);
 
+        console.log("\nbefore");
         console.log(token0.balanceOf(alice.addr));
+        console.log(token1.balanceOf(alice.addr));
 
         vm.prank(alice.addr);
         MockERC20(Currency.unwrap(token0)).approve(address(swapRouter), 2 ether);
 
-        vm.txGasPrice(100_000 wei);
+        vm.txGasPrice(100_000);
 
         vm.prank(alice.addr);
         swapRouter.swap(
@@ -104,7 +98,8 @@ contract MEVCapturingHookTest is Test, Deployers {
             "" 
         );
 
-        console.log("after");
+        console.log("\nafter");
         console.log(token0.balanceOf(alice.addr));
+        console.log(token1.balanceOf(alice.addr));
     }
 }
