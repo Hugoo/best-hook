@@ -13,14 +13,14 @@ import {Hooks} from "v4-core/libraries/Hooks.sol";
 
 contract BestHook is BaseHook {
     // Initialize BaseHook and ERC20
-    constructor(IPoolManager _manager, string memory _name, string memory _symbol) BaseHook(_manager) {}
+    constructor(IPoolManager _manager) BaseHook(_manager) {}
 
     // Set up hook permissions to return `true`
     // for the two hook functions we are using
     function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
         return Hooks.Permissions({
             beforeInitialize: false,
-            afterInitialize: false,
+            afterInitialize: true,
             beforeAddLiquidity: false,
             beforeRemoveLiquidity: false,
             afterAddLiquidity: false,
