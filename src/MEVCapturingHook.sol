@@ -13,10 +13,16 @@ import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 import {Hooks} from "v4-core/libraries/Hooks.sol";
 
 contract MEVCapturingHook is BaseHook {
+    // TODO: must be set per pool
     uint256 constant BASE_AMOUNT = 1 wei; // ?? this is too low
+
+    // 1 gwei
+    // TODO: must be set per pool
     uint256 constant MIN_PRIORITY = 10 wei; // ?? this is too low
 
     IPoolManager manager;
+
+    // TODO: must be set per pool
     uint256 lastTradedBlock = 0;
 
     // Initialize BaseHook and ERC20
