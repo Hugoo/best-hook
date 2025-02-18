@@ -77,20 +77,20 @@ contract MEVCapturingHookTest is Test, Deployers {
     }
 
     function test_addLiquidityAndSwap() public {
-        // Now we swap
-        // We will swap 0.001 ether for tokens
-        // We should get 20% of 0.001 * 10**18 points
-        // = 2 * 10**14
-
         console.log(token0.balanceOfSelf());
         console.log(token1.balanceOfSelf());
 
-        deal(Currency.unwrap(token0), alice.addr, 1 ether);
+        deal(Currency.unwrap(token0), alice.addr, 2 ether);
 
         console.log(token0.balanceOf(alice.addr));
 
         vm.prank(alice.addr);
-        swapRouter.swap{value: 1 ether}(
+        MockERC20(Currency.unwrap(token0)).approve(address(swapRouter), 2 ether);
+
+        vm.txGasPrice(100_000 wei);
+
+        vm.prank(alice.addr);
+        swapRouter.swap(
             key,
             IPoolManager.SwapParams({
                 zeroForOne: true,
