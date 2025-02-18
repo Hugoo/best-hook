@@ -85,11 +85,11 @@ contract MEVCapturingHookTest is Test, Deployers {
         console.log(token0.balanceOfSelf());
         console.log(token1.balanceOfSelf());
 
-        vm.deal(token0, alice.addr, 1 ether);
+        deal(Currency.unwrap(token0), alice.addr, 1 ether);
 
         console.log(token0.balanceOf(alice.addr));
 
-        vm.prank(alice);
+        vm.prank(alice.addr);
         swapRouter.swap{value: 1 ether}(
             key,
             IPoolManager.SwapParams({
