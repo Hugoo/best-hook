@@ -18,9 +18,9 @@ import {PoolKey} from "v4-core/types/PoolKey.sol";
 import {Hooks} from "v4-core/libraries/Hooks.sol";
 import {TickMath} from "v4-core/libraries/TickMath.sol";
 
-import {BestHook} from "../src/BestHook.sol";
+import {LPIncentiveHook} from "../src/LPIncentiveHook.sol";
 
-contract BestHookTest is Test, Deployers {
+contract LPIncentiveHookTest is Test, Deployers {
     using StateLibrary for IPoolManager;
     using PoolIdLibrary for PoolKey;
     using CurrencyLibrary for Currency;
@@ -29,7 +29,7 @@ contract BestHookTest is Test, Deployers {
     Currency token0;
     Currency token1;
 
-    BestHook public hook;
+    LPIncentiveHook public hook;
 
     function setUp() public {
         // Deploy v4 core contracts
@@ -43,8 +43,8 @@ contract BestHookTest is Test, Deployers {
         uint160 flags = uint160(Hooks.AFTER_INITIALIZE_FLAG);
         address hookAddress = address(flags);
 
-        deployCodeTo("BestHook.sol", abi.encode(manager), hookAddress);
-        hook = BestHook(hookAddress);
+        deployCodeTo("LPIncentiveHook.sol", abi.encode(manager), hookAddress);
+        hook = LPIncentiveHook(hookAddress);
     }
 
     // TODO: tests
