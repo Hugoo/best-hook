@@ -13,7 +13,11 @@ import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 import {Hooks} from "v4-core/libraries/Hooks.sol";
 
 contract MEVCapturingHook is BaseHook {
+    uint256 constant BASE_AMOUNT = 1 wei; // ?? this is too low
+    uint256 constant MIN_PRIORITY = 10 wei; // ?? this is too low
+
     IPoolManager manager;
+    uint256 lastTradedBlock = 0;
 
     // Initialize BaseHook and ERC20
     constructor(IPoolManager _manager) BaseHook(_manager) {
@@ -49,12 +53,14 @@ contract MEVCapturingHook is BaseHook {
         // take a fee based on the priority fee
         // and donate it to LP
 
-        uint256 BASE_AMOUNT = 1 wei; // ?? this is too low
-        uint256 priorityFee = tx.gasprice - block.basefee;
-        uint256 fee = priorityFee * BASE_AMOUNT;
+        uint256 priorityFee = _getPriorityFee();
 
-        // TODO: only charge fee in first swap of the block
-        // TODO: only charge dynamic fee if priority fee > some threshold
+        if (priorityFee < MIN_PRIORITY || block.number == lastTradedBlock) {
+            return (BaseHook.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
+        }
+
+        lastTradedBlock = block.number;
+        uint256 fee = priorityFee * BASE_AMOUNT;
 
         if (params.zeroForOne) {
             manager.donate(key, fee, 0, "");
@@ -63,5 +69,9 @@ contract MEVCapturingHook is BaseHook {
         }
 
         return (BaseHook.beforeSwap.selector, toBeforeSwapDelta(int128(int256(fee)), 0), 0);
+    }
+
+    function _getPriorityFee() internal view returns (uint256) {
+        return tx.gasprice - block.basefee;
     }
 }
