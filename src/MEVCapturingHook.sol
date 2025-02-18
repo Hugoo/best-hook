@@ -49,7 +49,6 @@ contract MEVCapturingHook is BaseHook {
         // take a fee based on the priority fee
         // and donate it to LP
 
-
         uint256 BASE_AMOUNT = 1 wei; // ?? this is too low
         uint256 priorityFee = tx.gasprice - block.basefee;
         uint256 fee = priorityFee * BASE_AMOUNT;

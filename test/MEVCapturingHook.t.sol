@@ -47,16 +47,14 @@ contract MEVCapturingHookTest is Test, Deployers {
         bob = vm.createWallet("bob");
 
         // Deploy our hook
-        uint160 flags = uint160(
-            Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG
-        );
+        uint160 flags = uint160(Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG);
         address hookAddress = address(flags);
 
         deployCodeTo("MEVCapturingHook.sol", abi.encode(manager), hookAddress);
         hook = MEVCapturingHook(hookAddress);
 
         // Init Pool
-        (key, ) = initPool(token0, token1, hook, 3000, SQRT_PRICE_1_1);
+        (key,) = initPool(token0, token1, hook, 3000, SQRT_PRICE_1_1);
 
         modifyLiquidityRouter.modifyLiquidity(
             key,
@@ -68,7 +66,6 @@ contract MEVCapturingHookTest is Test, Deployers {
             }),
             ZERO_BYTES
         );
-
     }
 
     function test_prioritySwap() public {
@@ -91,11 +88,8 @@ contract MEVCapturingHookTest is Test, Deployers {
                 amountSpecified: -1 ether, // Exact input for output swap
                 sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
             }),
-            PoolSwapTest.TestSettings({
-                takeClaims: false,
-                settleUsingBurn: false
-            }),
-            "" 
+            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
+            ""
         );
 
         console.log("\nafter");
