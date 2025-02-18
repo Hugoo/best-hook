@@ -2,6 +2,8 @@
 pragma solidity ^0.8.26;
 
 import {Test, console} from "forge-std/Test.sol";
+import {Vm} from "forge-std/Vm.sol";
+import {StdCheats} from "forge-std/StdCheats.sol";
 
 import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
 import {PoolSwapTest} from "v4-core/test/PoolSwapTest.sol";
@@ -29,6 +31,9 @@ contract MEVCapturingHookTest is Test, Deployers {
     Currency token0;
     Currency token1;
 
+    Vm.Wallet alice;
+    Vm.Wallet bob;
+
     MEVCapturingHook public hook;
 
     function setUp() public {
@@ -38,17 +43,68 @@ contract MEVCapturingHookTest is Test, Deployers {
         // Deploy two test tokens
         (token0, token1) = deployMintAndApprove2Currencies();
 
+        alice = vm.createWallet("alice");
+        bob = vm.createWallet("bob");
+
         // Deploy our hook
-        // TODO: set correct flags
-        uint160 flags = uint160(0);
+        uint160 flags = uint160(
+            Hooks.BEFORE_SWAP_FLAG
+        );
         address hookAddress = address(flags);
 
         deployCodeTo("MEVCapturingHook.sol", abi.encode(manager), hookAddress);
         hook = MEVCapturingHook(hookAddress);
+
+        // Init Pool
+        (key, ) = initPool(token0, token1, hook, 3000, SQRT_PRICE_1_1);
+
+        modifyLiquidityRouter.modifyLiquidity(
+            key,
+            IPoolManager.ModifyLiquidityParams({
+                tickLower: TickMath.minUsableTick(60),
+                tickUpper: TickMath.maxUsableTick(60),
+                liquidityDelta: 10 ether,
+                salt: bytes32(0)
+            }),
+            ZERO_BYTES
+        );
+
     }
 
     // TODO: tests
     function test_sample() public {
         assertEq(true, true);
+    }
+
+    function test_addLiquidityAndSwap() public {
+        // Now we swap
+        // We will swap 0.001 ether for tokens
+        // We should get 20% of 0.001 * 10**18 points
+        // = 2 * 10**14
+
+        console.log(token0.balanceOfSelf());
+        console.log(token1.balanceOfSelf());
+
+        vm.deal(token0, alice.addr, 1 ether);
+
+        console.log(token0.balanceOf(alice.addr));
+
+        vm.prank(alice);
+        swapRouter.swap{value: 1 ether}(
+            key,
+            IPoolManager.SwapParams({
+                zeroForOne: true,
+                amountSpecified: -1 ether, // Exact input for output swap
+                sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+            }),
+            PoolSwapTest.TestSettings({
+                takeClaims: false,
+                settleUsingBurn: false
+            }),
+            "" 
+        );
+
+        console.log("after");
+        console.log(token0.balanceOf(alice.addr));
     }
 }
