@@ -84,10 +84,10 @@ contract LPIncentiveHook is BaseHook {
 
             // Update secondsPerLiquidity
             // Get tick info for both old and new ticks
-            (uint128 liquidityGross,,,) = poolManager.getTickInfo(poolId, currentTick);
+            (,uint128 liquidityNet,,) = poolManager.getTickInfo(poolId, currentTick);
 
             // Convert liquidityGross to uint256 for safe math
-            uint256 currentLiquidity = uint256(liquidityGross);
+            uint256 currentLiquidity = uint256(liquidityNet);
 
             if (currentLiquidity > 0) {
                 secondsPerLiquidity[poolId] += timeElapsed * currentLiquidity;
