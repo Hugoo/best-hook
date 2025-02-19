@@ -43,7 +43,7 @@ contract LPIncentiveHook is BaseHook {
     function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
         return Hooks.Permissions({
             beforeInitialize: false,
-            afterInitialize: true,
+            afterInitialize: false,
             beforeAddLiquidity: false,
             beforeRemoveLiquidity: false,
             afterAddLiquidity: true,
@@ -187,7 +187,7 @@ contract LPIncentiveHook is BaseHook {
         return (totalSecondsPerLiquidity * liquidity * REWARD_RATE) / 1e18;
     }
 
-    function redeemRewards( IPoolManager.ModifyLiquidityParams calldata params) external {
+    function redeemRewards(IPoolManager.ModifyLiquidityParams calldata params) external {
         bytes32 positionKey = Position.calculatePositionKey(msg.sender, params.tickLower, params.tickUpper, params.salt);
         uint256 rewards = accumulatedRewards[positionKey];
         if (rewards == 0) revert NoRewardsAvailable();
