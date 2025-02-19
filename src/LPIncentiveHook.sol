@@ -101,26 +101,6 @@ contract LPIncentiveHook is BaseHook {
         return (BaseHook.afterSwap.selector, 0);
     }
 
-    // function _afterAddLiquidity(
-    //     address sender,
-    //     PoolKey calldata key,
-    //     IPoolManager.ModifyLiquidityParams calldata params,
-    //     BalanceDelta,
-    //     BalanceDelta,
-    //     bytes calldata
-    // ) internal override returns (bytes4, BalanceDelta) {
-    //     PoolId poolId = key.toId();
-    //     bytes32 positionKey = Position.calculatePositionKey(sender, params.tickLower, params.tickUpper, params.salt);
-
-    //     // Calculate and store secondsPerLiquidityInsideDeposit
-    //     uint256 secondsPerLiquidityInside =
-    //         calculateSecondsPerLiquidityInside(poolId, params.tickLower, params.tickUpper);
-
-    //     secondsPerLiquidityInsideDeposit[poolId][positionKey] = secondsPerLiquidityInside;
-
-    //     return (BaseHook.afterAddLiquidity.selector, BalanceDelta.wrap(0));
-    // }
-
     function _beforeAddLiquidity(
         address sender,
         PoolKey calldata key,
