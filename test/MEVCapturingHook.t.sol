@@ -95,5 +95,7 @@ contract MEVCapturingHookTest is Test, Deployers {
         console.log("\nafter");
         console.log(token0.balanceOf(alice.addr));
         console.log(token1.balanceOf(alice.addr));
+
+        // TODO: assert :))
     }
 }

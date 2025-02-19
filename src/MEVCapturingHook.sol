@@ -20,18 +20,12 @@ contract MEVCapturingHook is BaseHook {
     // TODO: must be set per pool
     uint256 constant MIN_PRIORITY = 10 wei; // ?? this is too low
 
-    IPoolManager manager;
-
     // TODO: must be set per pool
     uint256 lastTradedBlock = 0;
 
     // Initialize BaseHook and ERC20
-    constructor(IPoolManager _manager) BaseHook(_manager) {
-        manager = _manager;
-    }
+    constructor(IPoolManager _manager) BaseHook(_manager) {}
 
-    // Set up hook permissions to return `true`
-    // for the two hook functions we are using
     function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
         return Hooks.Permissions({
             beforeInitialize: false,
@@ -69,9 +63,9 @@ contract MEVCapturingHook is BaseHook {
         uint256 fee = priorityFee * BASE_AMOUNT;
 
         if (params.zeroForOne) {
-            manager.donate(key, fee, 0, "");
+            poolManager.donate(key, fee, 0, "");
         } else {
-            manager.donate(key, 0, fee, "");
+            poolManager.donate(key, 0, fee, "");
         }
 
         return (BaseHook.beforeSwap.selector, toBeforeSwapDelta(int128(int256(fee)), 0), 0);
