@@ -24,7 +24,7 @@ contract LPIncentiveHookTest is Test, Deployers {
     Currency token0;
     Currency token1;
 
-    MockERC20 rewardToken;
+    Currency rewardToken;
 
     address alice = address(0x1);
     address bob = address(0x2);
@@ -33,11 +33,7 @@ contract LPIncentiveHookTest is Test, Deployers {
         deployFreshManagerAndRouters();
 
         (token0, token1) = deployMintAndApprove2Currencies();
-
-        // Deploy mock tokens
-        // token0 = new MockERC20("Token0", "TK0", 18);
-        // token1 = new MockERC20("Token1", "TK1", 18);
-        rewardToken = new MockERC20("RewardToken", "RWD", 18);
+        rewardToken = deployMintAndApproveCurrency();
 
         // Calculate hook address based on permissions
         uint160 flags = uint160(
@@ -54,7 +50,7 @@ contract LPIncentiveHookTest is Test, Deployers {
         (key,) = initPool(token0, token1, hook, 3000, SQRT_PRICE_1_1);
 
         // Fund hook with reward tokens
-        rewardToken.mint(address(hook), 1000000e18);
+        deal(Currency.unwrap(rewardToken), address(hook), 1000000 ether);
     }
 
     function test_sample() public {
