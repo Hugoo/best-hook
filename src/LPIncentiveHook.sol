@@ -187,8 +187,8 @@ contract LPIncentiveHook is BaseHook {
         return (totalSecondsPerLiquidity * liquidity * REWARD_RATE) / 1e18;
     }
 
-    function redeemRewards(address sender, IPoolManager.ModifyLiquidityParams calldata params) external {
-        bytes32 positionKey = Position.calculatePositionKey(sender, params.tickLower, params.tickUpper, params.salt);
+    function redeemRewards( IPoolManager.ModifyLiquidityParams calldata params) external {
+        bytes32 positionKey = Position.calculatePositionKey(msg.sender, params.tickLower, params.tickUpper, params.salt);
         uint256 rewards = accumulatedRewards[positionKey];
         if (rewards == 0) revert NoRewardsAvailable();
 
