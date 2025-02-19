@@ -53,10 +53,6 @@ contract LPIncentiveHookTest is Test, Deployers {
         deal(Currency.unwrap(rewardToken), address(hook), 1000000 ether);
     }
 
-    function test_sample() public {
-        assertTrue(true);
-    }
-
     // function test_RewardAccumulation() public {
     //     // Simulate adding liquidity
     //     IPoolManager.ModifyLiquidityParams memory params = IPoolManager.ModifyLiquidityParams({
