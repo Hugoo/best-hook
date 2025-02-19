@@ -25,14 +25,14 @@ contract LPIncentiveHook is BaseHook {
     mapping(PoolId => uint256) public secondsPerLiquidity;
     mapping(PoolId => mapping(int24 => uint256)) public secondsPerLiquidityOutside;
     mapping(PoolId => mapping(bytes32 => uint256)) public secondsPerLiquidityInsideDeposit;
-    
+
     // Track last tick for each pool
     mapping(PoolId => int24) public lastTick;
     // Track last timestamp for each pool
     mapping(PoolId => uint256) public lastTimestamp;
     // Track accumulated rewards for each position
     mapping(bytes32 => uint256) public accumulatedRewards;
-    
+
     // Reward rate per second per unit of liquidity
     uint256 public constant REWARD_RATE = 1e18; // Configurable
 
@@ -59,41 +59,49 @@ contract LPIncentiveHook is BaseHook {
         });
     }
 
-    function _beforeSwap(
-        address,
-        PoolKey calldata key,
-        IPoolManager.SwapParams calldata,
-        bytes calldata
-    ) internal override returns (bytes4, BeforeSwapDelta, uint24) {
+    function _beforeSwap(address, PoolKey calldata key, IPoolManager.SwapParams calldata, bytes calldata)
+        internal
+        override
+        returns (bytes4, BeforeSwapDelta, uint24)
+    {
         PoolId poolId = key.toId();
-        (,int24 tick, ,)=poolManager.getSlot0(poolId);
-                lastTick[poolId] =tick ;
+        (, int24 tick,,) = poolManager.getSlot0(poolId);
+        lastTick[poolId] = tick;
         return (BaseHook.beforeSwap.selector, BeforeSwapDelta.wrap(0), 0);
     }
 
-    function _afterSwap(
-        address,
-        PoolKey calldata key,
-        IPoolManager.SwapParams calldata,
-        BalanceDelta,
-        bytes calldata
-    ) internal override returns (bytes4, int128) {
+    function _afterSwap(address, PoolKey calldata key, IPoolManager.SwapParams calldata, BalanceDelta, bytes calldata)
+        internal
+        override
+        returns (bytes4, int128)
+    {
         PoolId poolId = key.toId();
-        (,int24 currentTick,,) = poolManager.getSlot0(poolId);
+        (, int24 currentTick,,) = poolManager.getSlot0(poolId);
         int24 oldTick = lastTick[poolId];
 
         if (currentTick != oldTick) {
             uint256 timeElapsed = block.timestamp - lastTimestamp[poolId];
-            
+
             // Update secondsPerLiquidity
-            secondsPerLiquidity[poolId] += timeElapsed;
+            // Get tick info for both old and new ticks
+            (uint128 liquidityGross,,,) = poolManager.getTickInfo(poolId, currentTick);
+
+            // Convert liquidityGross to uint256 for safe math
+            uint256 currentLiquidity = uint256(liquidityGross);
+
+            if (currentLiquidity > 0) {
+                secondsPerLiquidity[poolId] += timeElapsed * currentLiquidity;
+            }
 
             // Update secondsPerLiquidityOutside for crossed ticks
             int24 tickLower = oldTick < currentTick ? oldTick : currentTick;
             int24 tickUpper = oldTick < currentTick ? currentTick : oldTick;
-            
+
             for (int24 tick = tickLower; tick <= tickUpper; tick++) {
-                secondsPerLiquidityOutside[poolId][tick] += timeElapsed;
+                (uint128 tickLiquidityGross,,,) = poolManager.getTickInfo(poolId, tick);
+                if (tickLiquidityGross > 0) {
+                    secondsPerLiquidityOutside[poolId][tick] += timeElapsed * uint256(tickLiquidityGross);
+                }
             }
         }
 
@@ -112,20 +120,12 @@ contract LPIncentiveHook is BaseHook {
         bytes calldata
     ) internal override returns (bytes4, BalanceDelta) {
         PoolId poolId = key.toId();
-        bytes32 positionKey = Position.calculatePositionKey(
-            sender,
-            params.tickLower,
-            params.tickUpper,
-            params.salt
-        );
+        bytes32 positionKey = Position.calculatePositionKey(sender, params.tickLower, params.tickUpper, params.salt);
 
         // Calculate and store secondsPerLiquidityInsideDeposit
-        uint256 secondsPerLiquidityInside = calculateSecondsPerLiquidityInside(
-            poolId,
-            params.tickLower,
-            params.tickUpper
-        );
-        
+        uint256 secondsPerLiquidityInside =
+            calculateSecondsPerLiquidityInside(poolId, params.tickLower, params.tickUpper);
+
         secondsPerLiquidityInsideDeposit[poolId][positionKey] = secondsPerLiquidityInside;
 
         return (BaseHook.afterAddLiquidity.selector, BalanceDelta.wrap(0));
@@ -140,23 +140,15 @@ contract LPIncentiveHook is BaseHook {
         bytes calldata
     ) internal override returns (bytes4, BalanceDelta) {
         PoolId poolId = key.toId();
-        bytes32 positionKey = Position.calculatePositionKey(
-            sender,
-            params.tickLower,
-            params.tickUpper,
-            params.salt
-        );
+        bytes32 positionKey = Position.calculatePositionKey(sender, params.tickLower, params.tickUpper, params.salt);
 
         // Calculate rewards
-        uint256 secondsPerLiquidityInside = calculateSecondsPerLiquidityInside(
-            poolId,
-            params.tickLower,
-            params.tickUpper
-        );
-        
-        uint256 totalSecondsPerLiquidity = secondsPerLiquidityInside - 
-            secondsPerLiquidityInsideDeposit[poolId][positionKey];
-            
+        uint256 secondsPerLiquidityInside =
+            calculateSecondsPerLiquidityInside(poolId, params.tickLower, params.tickUpper);
+
+        uint256 totalSecondsPerLiquidity =
+            secondsPerLiquidityInside - secondsPerLiquidityInsideDeposit[poolId][positionKey];
+
         uint256 rewards = calculateRewards(totalSecondsPerLiquidity, uint256(params.liquidityDelta));
         accumulatedRewards[positionKey] += rewards;
 
@@ -166,26 +158,24 @@ contract LPIncentiveHook is BaseHook {
         return (BaseHook.afterRemoveLiquidity.selector, BalanceDelta.wrap(0));
     }
 
-    function calculateSecondsPerLiquidityInside(
-        PoolId poolId,
-        int24 tickLower,
-        int24 tickUpper
-    ) internal view returns (uint256) {
-        (,int24 currentTick,,) = poolManager.getSlot0(poolId);
-        
+    function calculateSecondsPerLiquidityInside(PoolId poolId, int24 tickLower, int24 tickUpper)
+        internal
+        view
+        returns (uint256)
+    {
+        (, int24 currentTick,,) = poolManager.getSlot0(poolId);
+
         uint256 secondsPerLiquidityBelow;
         uint256 secondsPerLiquidityAbove;
 
         if (currentTick < tickLower) {
-            secondsPerLiquidityBelow = secondsPerLiquidity[poolId] - 
-                secondsPerLiquidityOutside[poolId][tickLower];
+            secondsPerLiquidityBelow = secondsPerLiquidity[poolId] - secondsPerLiquidityOutside[poolId][tickLower];
         } else {
             secondsPerLiquidityBelow = secondsPerLiquidityOutside[poolId][tickLower];
         }
 
         if (currentTick < tickUpper) {
-            secondsPerLiquidityAbove = secondsPerLiquidity[poolId] - 
-                secondsPerLiquidityOutside[poolId][tickUpper];
+            secondsPerLiquidityAbove = secondsPerLiquidity[poolId] - secondsPerLiquidityOutside[poolId][tickUpper];
         } else {
             secondsPerLiquidityAbove = secondsPerLiquidityOutside[poolId][tickUpper];
         }
@@ -193,18 +183,18 @@ contract LPIncentiveHook is BaseHook {
         return secondsPerLiquidity[poolId] - secondsPerLiquidityBelow - secondsPerLiquidityAbove;
     }
 
-    function calculateRewards(uint256 totalSecondsPerLiquidity, uint256 liquidity) 
-        internal pure returns (uint256) 
-    {
+    function calculateRewards(uint256 totalSecondsPerLiquidity, uint256 liquidity) internal pure returns (uint256) {
         return (totalSecondsPerLiquidity * liquidity * REWARD_RATE) / 1e18;
     }
 
-    function redeemRewards(bytes32 positionKey) external {
+    function redeemRewards(address sender, IPoolManager.ModifyLiquidityParams calldata params) external {
+        bytes32 positionKey = Position.calculatePositionKey(sender, params.tickLower, params.tickUpper, params.salt);
         uint256 rewards = accumulatedRewards[positionKey];
         if (rewards == 0) revert NoRewardsAvailable();
-        
-        if (rewardToken.balanceOf(address(this)) < rewards) 
+
+        if (rewardToken.balanceOf(address(this)) < rewards) {
             revert InsufficientRewardBalance();
+        }
 
         delete accumulatedRewards[positionKey];
         rewardToken.transfer(msg.sender, rewards);
