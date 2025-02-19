@@ -24,6 +24,7 @@ contract LPIncentiveHook is BaseHook {
     IERC20 public immutable rewardToken;
     mapping(PoolId => uint256) public secondsPerLiquidity;
     mapping(PoolId => mapping(int24 => uint256)) public secondsPerLiquidityOutside;
+    mapping(PoolId => mapping(int24 => uint256)) public secondsPerLiquidityOutsideLastUpdate;
     mapping(PoolId => mapping(bytes32 => uint256)) public secondsPerLiquidityInsideDeposit;
 
     // Track last tick for each pool
@@ -64,6 +65,7 @@ contract LPIncentiveHook is BaseHook {
         override
         returns (bytes4, BeforeSwapDelta, uint24)
     {
+        // store current tick to see whether there was a change in the swap
         PoolId poolId = key.toId();
         (, int24 tick,,) = poolManager.getSlot0(poolId);
         lastTick[poolId] = tick;
@@ -81,6 +83,7 @@ contract LPIncentiveHook is BaseHook {
 
         if (currentTick != oldTick) {
             uint256 timeElapsed = block.timestamp - lastTimestamp[poolId];
+            lastTimestamp[poolId] = block.timestamp;
 
             // Update secondsPerLiquidity
             // Get tick info for both old and new ticks
@@ -100,13 +103,14 @@ contract LPIncentiveHook is BaseHook {
             for (int24 tick = tickLower; tick <= tickUpper; tick++) {
                 (uint128 tickLiquidityGross,,,) = poolManager.getTickInfo(poolId, tick);
                 if (tickLiquidityGross > 0) {
+                    timeElapsed = block.timestamp - secondsPerLiquidityOutsideLastUpdate[poolId][tick];
                     secondsPerLiquidityOutside[poolId][tick] += timeElapsed * uint256(tickLiquidityGross);
+                    secondsPerLiquidityOutsideLastUpdate[poolId][tick] = block.timestamp;
                 }
             }
         }
-
-        lastTimestamp[poolId] = block.timestamp;
-        lastTick[poolId] = currentTick;
+        // resetting to zero
+        lastTick[poolId] = 0;
 
         return (BaseHook.afterSwap.selector, 0);
     }
