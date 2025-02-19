@@ -13,6 +13,7 @@ import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {BalanceDelta} from "v4-core/types/BalanceDelta.sol";
 import {Hooks} from "v4-core/libraries/Hooks.sol";
 import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol"; 
+import {IERC20} from "v4-periphery/lib/v4-core/lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
 
 contract LPIncentiveHookTest is Test, Deployers {
@@ -82,6 +83,20 @@ contract LPIncentiveHookTest is Test, Deployers {
             salt: bytes32(0)
         });
 
+        // // Mock the pool manager calls needed for reward calculation
+        // vm.mockCall(
+        //     address(poolManager),
+        //     abi.encodeWithSelector(IPoolManager.getLiquidity.selector, poolId),
+        //     abi.encode(1000e18)
+        // );
+
+        // // Instead of mocking getLiquidity, we'll mock the actual state access method
+        // vm.mockCall(
+        //     address(poolManager),
+        //     abi.encodeWithSelector(IPoolManager.getSlot0.selector, poolId),
+        //     abi.encode(0, 100, 0, 0, 0, 0, false)
+        // );
+
         hook.afterAddLiquidity(alice, poolKey, params, BalanceDelta.wrap(0), BalanceDelta.wrap(0), "");
 
         // Simulate time passing and price movement
@@ -113,9 +128,18 @@ contract LPIncentiveHookTest is Test, Deployers {
         // Setup a position with rewards
         bytes32 positionKey = keccak256(abi.encode(alice, int24(0), int24(100), bytes32(0)));
         uint256 rewardAmount = 100e18;
+        
+        // Mock the accumulated rewards call
         vm.mockCall(
             address(hook),
             abi.encodeWithSelector(hook.accumulatedRewards.selector, positionKey),
+            abi.encode(rewardAmount)
+        );
+
+        // Mock the reward token balance to be sufficient
+        vm.mockCall(
+            address(rewardToken),
+            abi.encodeWithSelector(IERC20.balanceOf.selector, address(hook)),
             abi.encode(rewardAmount)
         );
 
@@ -128,23 +152,34 @@ contract LPIncentiveHookTest is Test, Deployers {
         assertEq(balanceAfter - balanceBefore, rewardAmount, "Incorrect reward amount transferred");
     }
 
-    function testFail_RedeemZeroRewards() public {
+    function test_RevertWhen_RedeemingZeroRewards() public {
         bytes32 positionKey = keccak256(abi.encode(alice, int24(0), int24(100), bytes32(0)));
         vm.prank(alice);
-        hook.redeemRewards(positionKey); // Should revert with NoRewardsAvailable
+        vm.expectRevert(LPIncentiveHook.NoRewardsAvailable.selector);
+        hook.redeemRewards(positionKey);
     }
 
-    function testFail_RedeemInsufficientBalance() public {
+    function test_RevertWhen_RedeemingWithInsufficientBalance() public {
         // Setup position with rewards larger than hook's balance
         bytes32 positionKey = keccak256(abi.encode(alice, int24(0), int24(100), bytes32(0)));
         uint256 largeRewardAmount = 1000000000e18;
+        
+        // Mock the accumulated rewards call
         vm.mockCall(
             address(hook),
             abi.encodeWithSelector(hook.accumulatedRewards.selector, positionKey),
             abi.encode(largeRewardAmount)
         );
 
+        // Mock the reward token balance to be insufficient
+        vm.mockCall(
+            address(rewardToken),
+            abi.encodeWithSelector(IERC20.balanceOf.selector, address(hook)),
+            abi.encode(largeRewardAmount - 1)  // Less than the reward amount
+        );
+
         vm.prank(alice);
-        hook.redeemRewards(positionKey); // Should revert with InsufficientRewardBalance
+        vm.expectRevert(LPIncentiveHook.InsufficientRewardBalance.selector);
+        hook.redeemRewards(positionKey);
     }
 }
