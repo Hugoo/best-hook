@@ -82,19 +82,7 @@ contract LPIncentiveHook is BaseHook {
         int24 oldTick = lastTick[poolId];
 
         if (currentTick != oldTick) {
-            uint256 timeElapsed = block.timestamp - lastTimestamp[poolId];
-            lastTimestamp[poolId] = block.timestamp;
-
-            // Update secondsPerLiquidity
-            // Get tick info for both old and new ticks
-            (,uint128 liquidityNet,,) = poolManager.getTickInfo(poolId, currentTick);
-
-            // Convert liquidityGross to uint256 for safe math
-            uint256 currentLiquidity = uint256(liquidityNet);
-
-            if (currentLiquidity > 0) {
-                secondsPerLiquidity[poolId] += timeElapsed * currentLiquidity;
-            }
+            
 
             // Update secondsPerLiquidityOutside for crossed ticks
             int24 tickLower = oldTick < currentTick ? oldTick : currentTick;
@@ -113,6 +101,22 @@ contract LPIncentiveHook is BaseHook {
         lastTick[poolId] = 0;
 
         return (BaseHook.afterSwap.selector, 0);
+    }
+
+    function updateSecondsPerLiquidity(PoolId ioolId, int24 currentTick) internal {
+        uint256 timeElapsed = block.timestamp - lastTimestamp[poolId];
+
+            // Update secondsPerLiquidity
+            // Get tick info for both old and new ticks
+            (,uint128 liquidityNet,,) = poolManager.getTickInfo(poolId, currentTick);
+
+            // Convert liquidityGross to uint256 for safe math
+            uint256 currentLiquidity = uint256(liquidityNet);
+
+            if (currentLiquidity > 0) {
+                secondsPerLiquidity[poolId] += timeElapsed * currentLiquidity;
+            }
+            lastTimestamp[poolId] = block.timestamp;
     }
 
     function _afterAddLiquidity(
@@ -135,7 +139,30 @@ contract LPIncentiveHook is BaseHook {
         return (BaseHook.afterAddLiquidity.selector, BalanceDelta.wrap(0));
     }
 
-    function _afterRemoveLiquidity(
+    function _beforeAddLiquidity(
+        address,
+        PoolKey calldata key,
+        IPoolManager.ModifyLiquidityParams calldata,
+        bytes calldata
+        ){
+        PoolId poolId = key.toId();
+        (, int24 currentTick,,) = poolManager.getSlot0(poolId);
+        updateSecondsPerLiquidity(poolId, currentTick);
+        // Update secondsPerLiquidityOutside for all ticks in range
+        int24 tickLower = params.tickLower > currentTick ? params.tickLower : currentTick;
+        int24 tickUpper = params.tickUpper < currentTick ? params.tickUpper : currentTick;
+        for (int24 tick = tickLower; tick <= tickUpper; tick++) {
+            (uint128 tickLiquidityGross,uint128 tickLiquidityNet,,) = poolManager.getTickInfo(poolId, tick);
+            if (tickLiquidityGross > 0) {
+                uint256 timeElapsed = block.timestamp - secondsPerLiquidityOutsideLastUpdate[poolId][tick];
+                secondsPerLiquidityOutside[poolId][tick] += timeElapsed * uint256(tickLiquidityNet);
+                secondsPerLiquidityOutsideLastUpdate[poolId][tick] = block.timestamp;
+            }
+        }
+        return BaseHook.beforeAddLiquidity.selector;
+    }
+
+    function _beforeRemoveLiquidity(
         address sender,
         PoolKey calldata key,
         IPoolManager.ModifyLiquidityParams calldata params,
@@ -152,7 +179,7 @@ contract LPIncentiveHook is BaseHook {
 
         uint256 totalSecondsPerLiquidity =
             secondsPerLiquidityInside - secondsPerLiquidityInsideDeposit[poolId][positionKey];
-
+        // this assumes that the params.liquidityDelta is the complete liquidity of the position
         uint256 rewards = calculateRewards(totalSecondsPerLiquidity, uint256(params.liquidityDelta));
         accumulatedRewards[positionKey] += rewards;
 
