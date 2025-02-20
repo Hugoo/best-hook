@@ -289,13 +289,6 @@ contract LPIncentiveHookTest is Test, Deployers {
             "Initial secondsPerLiquidityInside should be set correctly"
         );
 
-        // Verify tick-specific state for both lower and upper ticks
-        assertTrue(
-            hook.secondsPerLiquidityOutsideLastUpdate(poolId, params.tickLower) == 0
-                || hook.secondsPerLiquidityOutsideLastUpdate(poolId, params.tickUpper) == 0,
-            "At least one tick should have been updated"
-        );
-
         // Verify initial rewards are zero
         assertEq(hook.accumulatedRewards(alice), 0, "Initial rewards should be zero");
     }

@@ -27,8 +27,6 @@ contract LPIncentiveHook is BaseHook {
     mapping(PoolId => mapping(int24 => uint256)) public secondsPerLiquidityOutside;
     mapping(PoolId => mapping(bytes32 => uint256)) public secondsPerLiquidityInsideDeposit;
     // Storing the last liquidity per second updates
-    // Storing the last time
-    mapping(PoolId => mapping(int24 => uint256)) public secondsPerLiquidityOutsideLastUpdate;
     // Storing the last global liquidity per second
     mapping(PoolId => mapping(int24 => uint256)) public lastLiquidityPerSecondOfTick;
 
