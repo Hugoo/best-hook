@@ -12,6 +12,7 @@ import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {BeforeSwapDelta} from "v4-core/types/BeforeSwapDelta.sol";
 import {Hooks} from "v4-core/libraries/Hooks.sol";
 import {StateLibrary} from "v4-core/libraries/StateLibrary.sol";
+import {console} from "forge-std/console.sol";
 
 contract LPIncentiveHook is BaseHook {
     using PoolIdLibrary for PoolKey;
@@ -40,6 +41,7 @@ contract LPIncentiveHook is BaseHook {
 
     // Reward rate per second per unit of liquidity
     uint256 public constant REWARD_RATE = 1e18; // Configurable
+    int24 public tickSpacing = 60; // Configurable
 
     constructor(IPoolManager _manager, IERC20 _rewardToken) BaseHook(_manager) {
         rewardToken = _rewardToken;
@@ -64,11 +66,13 @@ contract LPIncentiveHook is BaseHook {
         });
     }
 
-    function _afterSwap(address, PoolKey calldata key, IPoolManager.SwapParams calldata params, BalanceDelta, bytes calldata)
-        internal
-        override
-        returns (bytes4, int128)
-    {
+    function _afterSwap(
+        address,
+        PoolKey calldata key,
+        IPoolManager.SwapParams calldata params,
+        BalanceDelta,
+        bytes calldata
+    ) internal override returns (bytes4, int128) {
         PoolId poolId = key.toId();
         (, int24 currentTick,,) = poolManager.getSlot0(poolId);
         int24 oldTick = beforeSwapTick[poolId];
@@ -76,15 +80,15 @@ contract LPIncentiveHook is BaseHook {
         // If we are crossing ticks, we need to update the secondsPerLiquidity
         if (currentTick != oldTick) {
             updateSecondsPerLiquidity(poolId);
-            
+
             // Determine which direction we crossed ticks
             bool zeroForOne = params.zeroForOne;
             int24 tickLower = oldTick < currentTick ? oldTick : currentTick;
             int24 tickUpper = oldTick < currentTick ? currentTick : oldTick;
 
             // Update all crossed ticks
-            for (int24 tick = tickLower; tick <= tickUpper; tick++) {
-                updatesecondsPerLiquidityOutsideForTick(poolId, tick, zeroForOne);
+            for (int24 tick = tickLower / tickSpacing; tick <= tickUpper / tickSpacing; tick++) {
+                updatesecondsPerLiquidityOutsideForTick(poolId, tick * tickSpacing, zeroForOne);
             }
         }
 
@@ -104,13 +108,12 @@ contract LPIncentiveHook is BaseHook {
         beforeSwapTick[poolId] = currentTick;
 
         bytes32 positionKey = Position.calculatePositionKey(sender, params.tickLower, params.tickUpper, params.salt);
-        
+
         updateSecondsPerLiquidity(poolId);
-        updatesecondsPerLiquidityOutsideForTick(poolId, params.tickLower, params.tickLower > currentTick); 
-        updatesecondsPerLiquidityOutsideForTick(poolId, params.tickUpper, params.tickUpper > currentTick); 
+        updatesecondsPerLiquidityOutsideForTick(poolId, params.tickLower, params.tickLower > currentTick);
+        updatesecondsPerLiquidityOutsideForTick(poolId, params.tickUpper, params.tickUpper > currentTick);
         updateUserRewards(sender, poolId, params, positionKey);
 
-        
         return BaseHook.beforeAddLiquidity.selector;
     }
 
@@ -125,8 +128,8 @@ contract LPIncentiveHook is BaseHook {
         bytes32 positionKey = Position.calculatePositionKey(sender, params.tickLower, params.tickUpper, params.salt);
 
         updateSecondsPerLiquidity(poolId);
-        updatesecondsPerLiquidityOutsideForTick(poolId, params.tickLower, params.tickLower > currentTick); 
-        updatesecondsPerLiquidityOutsideForTick(poolId, params.tickUpper, params.tickUpper > currentTick); 
+        updatesecondsPerLiquidityOutsideForTick(poolId, params.tickLower, params.tickLower < currentTick);
+        updatesecondsPerLiquidityOutsideForTick(poolId, params.tickUpper, params.tickUpper < currentTick);
         updateUserRewards(sender, poolId, params, positionKey);
 
         return (BaseHook.beforeRemoveLiquidity.selector);
@@ -134,7 +137,8 @@ contract LPIncentiveHook is BaseHook {
 
     function updateSecondsPerLiquidity(PoolId poolId) internal {
         uint256 timeElapsed = block.timestamp - lastUpdateTimeOfSecondsPerLiquidity[poolId];
-        if (timeElapsed > 0) {  // Only update if time has passed
+        if (timeElapsed > 0) {
+            // Only update if time has passed
             uint256 currentLiquidity = poolManager.getLiquidity(poolId);
             if (currentLiquidity > 0) {
                 // Scale by 1e18 to maintain precision
@@ -144,26 +148,17 @@ contract LPIncentiveHook is BaseHook {
         }
     }
 
-    function updateSecondsPerLiquidityInTicks(
-        PoolId poolId,
-        int24 currentTick,
-        IPoolManager.ModifyLiquidityParams calldata params
-    ) internal {
-        int24 tickLower = params.tickLower > currentTick ? params.tickLower : currentTick;
-        int24 tickUpper = params.tickUpper < currentTick ? params.tickUpper : currentTick;
-        for (int24 tick = tickLower; tick <= tickUpper; tick++) {
-            updatesecondsPerLiquidityOutsideForTick(poolId, tick, params.tickLower > currentTick);
-        }
-    }
-
     function updatesecondsPerLiquidityOutsideForTick(PoolId poolId, int24 tick, bool tickWasOutside) internal {
         (uint128 tickLiquidityGross,,,) = poolManager.getTickInfo(poolId, tick);
         if (tickLiquidityGross > 0) {
             uint256 timeElapsed = block.timestamp - secondsPerLiquidityOutsideLastUpdate[poolId][tick];
-            if (timeElapsed > 0) {  // Only update if time has passed
-                if(!tickWasOutside){
-                    uint256 secondsPerliquidityDelta = secondsPerLiquidity[poolId] - lastLiquidityPerSecondOfTick[poolId][tick];
-                    if (secondsPerliquidityDelta > 0) {  // Only update if there's a change in liquidity
+            if (timeElapsed > 0) {
+                // Only update if time has passed
+                if (!tickWasOutside) {
+                    uint256 secondsPerliquidityDelta =
+                        secondsPerLiquidity[poolId] - lastLiquidityPerSecondOfTick[poolId][tick];
+                    if (secondsPerliquidityDelta > 0) {
+                        // Only update if there's a change in liquidity
                         secondsPerLiquidityOutside[poolId][tick] += secondsPerliquidityDelta;
                     }
                 }
@@ -183,13 +178,18 @@ contract LPIncentiveHook is BaseHook {
         (uint128 positionLiquidity) = poolManager.getPositionLiquidity(poolId, positionKey);
 
         // Calculate rewards
-        uint256 secondsPerLiquidityInside = calculateSecondsPerLiquidityInside(poolId, params.tickLower, params.tickUpper);
+        uint256 secondsPerLiquidityInside =
+            calculateSecondsPerLiquidityInside(poolId, params.tickLower, params.tickUpper);
         uint256 lastSecondsPerLiquidityInside = secondsPerLiquidityInsideDeposit[poolId][positionKey];
+        console.log("positionLiquidity", positionLiquidity);
+        console.log("sender", sender);
+        console.log("secondsPerLiquidityInside", secondsPerLiquidityInside);
+        console.log("lastSecondsPerLiquidityInside", lastSecondsPerLiquidityInside);
 
         // Only calculate rewards if this isn't the first deposit
-        if (lastSecondsPerLiquidityInside > 0) {
+        if (secondsPerLiquidityInside > 0) {
             uint256 totalSecondsPerLiquidity = secondsPerLiquidityInside - lastSecondsPerLiquidityInside;
-            
+
             // Calculate rewards based on the position's liquidity before the modification
             if (positionLiquidity > 0) {
                 uint256 rewards = calculateRewards(totalSecondsPerLiquidity, uint256(positionLiquidity));
@@ -211,17 +211,9 @@ contract LPIncentiveHook is BaseHook {
         uint256 secondsPerLiquidityBelow;
         uint256 secondsPerLiquidityAbove;
 
-        if (currentTick < tickLower) {
-            secondsPerLiquidityBelow = secondsPerLiquidity[poolId] - secondsPerLiquidityOutside[poolId][tickLower];
-        } else {
-            secondsPerLiquidityBelow = secondsPerLiquidityOutside[poolId][tickLower];
-        }
+        secondsPerLiquidityBelow = secondsPerLiquidityOutside[poolId][tickLower];
 
-        if (currentTick < tickUpper) {
-            secondsPerLiquidityAbove = secondsPerLiquidity[poolId] - secondsPerLiquidityOutside[poolId][tickUpper];
-        } else {
-            secondsPerLiquidityAbove = secondsPerLiquidityOutside[poolId][tickUpper];
-        }
+        secondsPerLiquidityAbove = secondsPerLiquidity[poolId] - secondsPerLiquidityOutside[poolId][tickUpper];
 
         return secondsPerLiquidity[poolId] - secondsPerLiquidityBelow - secondsPerLiquidityAbove;
     }
@@ -230,7 +222,7 @@ contract LPIncentiveHook is BaseHook {
         // Adjust reward calculation to properly account for time and liquidity
         // REWARD_RATE is per second per unit of liquidity (1e18)
         // We divide by 1e36 because totalSecondsPerLiquidity is scaled by 1e18 and we want to normalize the result
-        return (totalSecondsPerLiquidity * liquidity * REWARD_RATE) / 1e36;
+        return (totalSecondsPerLiquidity * liquidity);
     }
 
     function redeemRewards() external {
