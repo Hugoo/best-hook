@@ -149,23 +149,15 @@ contract LPIncentiveHook is BaseHook {
     }
 
     function updatesecondsPerLiquidityOutsideForTick(PoolId poolId, int24 tick, bool tickWasOutside) internal {
-        (uint128 tickLiquidityGross,,,) = poolManager.getTickInfo(poolId, tick);
-        if (tickLiquidityGross > 0) {
-            uint256 timeElapsed = block.timestamp - secondsPerLiquidityOutsideLastUpdate[poolId][tick];
-            if (timeElapsed > 0) {
-                // Only update if time has passed
-                if (!tickWasOutside) {
-                    uint256 secondsPerliquidityDelta =
-                        secondsPerLiquidity[poolId] - lastLiquidityPerSecondOfTick[poolId][tick];
-                    if (secondsPerliquidityDelta > 0) {
-                        // Only update if there's a change in liquidity
-                        secondsPerLiquidityOutside[poolId][tick] += secondsPerliquidityDelta;
-                    }
-                }
-                lastLiquidityPerSecondOfTick[poolId][tick] = secondsPerLiquidity[poolId];
-                secondsPerLiquidityOutsideLastUpdate[poolId][tick] = block.timestamp;
+        // Only update if time has passed
+        if (!tickWasOutside) {
+            uint256 secondsPerliquidityDelta = secondsPerLiquidity[poolId] - lastLiquidityPerSecondOfTick[poolId][tick];
+            if (secondsPerliquidityDelta > 0) {
+                // Only update if there's a change in liquidity
+                secondsPerLiquidityOutside[poolId][tick] += secondsPerliquidityDelta;
             }
         }
+        lastLiquidityPerSecondOfTick[poolId][tick] = secondsPerLiquidity[poolId];
     }
 
     function updateUserRewards(
@@ -181,10 +173,6 @@ contract LPIncentiveHook is BaseHook {
         uint256 secondsPerLiquidityInside =
             calculateSecondsPerLiquidityInside(poolId, params.tickLower, params.tickUpper);
         uint256 lastSecondsPerLiquidityInside = secondsPerLiquidityInsideDeposit[poolId][positionKey];
-        console.log("positionLiquidity", positionLiquidity);
-        console.log("sender", sender);
-        console.log("secondsPerLiquidityInside", secondsPerLiquidityInside);
-        console.log("lastSecondsPerLiquidityInside", lastSecondsPerLiquidityInside);
 
         // Only calculate rewards if this isn't the first deposit
         if (secondsPerLiquidityInside > 0) {

@@ -32,9 +32,11 @@ contract LPIncentiveHookTest is Test, Deployers {
 
     address alice = address(0x1);
     address bob = address(0x2);
+    address charlie = address(0x3);
 
     PoolModifyLiquidityTest modifyLiquidityRouterAlice;
     PoolModifyLiquidityTest modifyLiquidityRouterBob;
+    PoolModifyLiquidityTest modifyLiquidityRouterCharlie;
 
     function setUp() public {
         deployFreshManagerAndRouters();
@@ -60,6 +62,7 @@ contract LPIncentiveHookTest is Test, Deployers {
         // we deploy two modifyLiquidityRouters, one for each user
         modifyLiquidityRouterAlice = new PoolModifyLiquidityTest(manager);
         modifyLiquidityRouterBob = new PoolModifyLiquidityTest(manager);
+        modifyLiquidityRouterCharlie = new PoolModifyLiquidityTest(manager);
     }
 
     function test_ProportionalRewardsToTime() public {
@@ -395,7 +398,7 @@ contract LPIncentiveHookTest is Test, Deployers {
 
         // Perform a large swap to cross ticks into Bob's range
         vm.startPrank(alice);
-        swapRouter.swap(
+        swapRouter.swap{gas: 10000000}(
             key,
             IPoolManager.SwapParams({
                 zeroForOne: false,
@@ -506,7 +509,7 @@ contract LPIncentiveHookTest is Test, Deployers {
 
         // Perform swap to cross into Bob's range
         vm.startPrank(alice);
-        swapRouter.swap(
+        swapRouter.swap{gas: 10000000}(
             key,
             IPoolManager.SwapParams({zeroForOne: false, amountSpecified: 4 ether, sqrtPriceLimitX96: MAX_PRICE_LIMIT}),
             PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
@@ -565,5 +568,169 @@ contract LPIncentiveHookTest is Test, Deployers {
         // Both should have non-zero rewards
         assertGt(aliceRewards, 0, "Alice should have rewards");
         assertGt(bobRewards, 0, "Bob should have rewards");
+    }
+
+    function test_ThreeRangeMovement() public {
+        // Deal tokens to users
+        deal(Currency.unwrap(token0), alice, 100000 ether);
+        deal(Currency.unwrap(token1), alice, 100000 ether);
+        deal(Currency.unwrap(token0), bob, 100000 ether);
+        deal(Currency.unwrap(token1), bob, 100000 ether);
+        deal(Currency.unwrap(token0), charlie, 100000 ether);
+        deal(Currency.unwrap(token1), charlie, 100000 ether);
+
+        // Approve tokens for routers and swap router
+        vm.startPrank(alice);
+        IERC20(Currency.unwrap(token0)).approve(address(modifyLiquidityRouterAlice), type(uint256).max);
+        IERC20(Currency.unwrap(token1)).approve(address(modifyLiquidityRouterAlice), type(uint256).max);
+        IERC20(Currency.unwrap(token0)).approve(address(swapRouter), type(uint256).max);
+        IERC20(Currency.unwrap(token1)).approve(address(swapRouter), type(uint256).max);
+        vm.stopPrank();
+
+        vm.startPrank(bob);
+        IERC20(Currency.unwrap(token0)).approve(address(modifyLiquidityRouterBob), type(uint256).max);
+        IERC20(Currency.unwrap(token1)).approve(address(modifyLiquidityRouterBob), type(uint256).max);
+        IERC20(Currency.unwrap(token0)).approve(address(swapRouter), type(uint256).max);
+        IERC20(Currency.unwrap(token1)).approve(address(swapRouter), type(uint256).max);
+        vm.stopPrank();
+
+        vm.startPrank(charlie);
+        IERC20(Currency.unwrap(token0)).approve(address(modifyLiquidityRouterCharlie), type(uint256).max);
+        IERC20(Currency.unwrap(token1)).approve(address(modifyLiquidityRouterCharlie), type(uint256).max);
+        vm.stopPrank();
+
+        // charlie adds liquidity for a whole range
+        IPoolManager.ModifyLiquidityParams memory charlieParams = IPoolManager.ModifyLiquidityParams({
+            tickLower: 240,
+            tickUpper: 600,
+            liquidityDelta: 1000e18,
+            salt: bytes32(0)
+        });
+        vm.startPrank(charlie);
+        modifyLiquidityRouterCharlie.modifyLiquidity(key, charlieParams, ZERO_BYTES);
+        vm.stopPrank();
+
+        // Create three adjacent liquidity ranges
+        IPoolManager.ModifyLiquidityParams memory aliceParams = IPoolManager.ModifyLiquidityParams({
+            tickLower: -120,
+            tickUpper: 60,
+            liquidityDelta: 1000e18,
+            salt: bytes32(0)
+        });
+
+        IPoolManager.ModifyLiquidityParams memory bobParams = IPoolManager.ModifyLiquidityParams({
+            tickLower: 60,
+            tickUpper: 240,
+            liquidityDelta: 1000e18,
+            salt: bytes32(0)
+        });
+
+        // Add liquidity for each user in their respective ranges
+        vm.startPrank(alice);
+        modifyLiquidityRouterAlice.modifyLiquidity(key, aliceParams, ZERO_BYTES);
+        vm.stopPrank();
+
+        vm.startPrank(bob);
+        modifyLiquidityRouterBob.modifyLiquidity(key, bobParams, ZERO_BYTES);
+        vm.stopPrank();
+
+        // Get initial tick
+        (, int24 currentTick,,) = manager.getSlot0(key.toId());
+        assertGt(currentTick, aliceParams.tickLower, "Initial tick should be in Alice's range");
+        assertLt(currentTick, aliceParams.tickUpper, "Initial tick should be in Alice's range");
+
+        uint256 timePerRange = 1000;
+
+        // Wait in Alice's range
+        vm.warp(block.timestamp + timePerRange);
+
+        // Move to Bob's range
+        vm.startPrank(alice);
+        swapRouter.swap{gas: 10000000}(
+            key,
+            IPoolManager.SwapParams({zeroForOne: false, amountSpecified: 10 ether, sqrtPriceLimitX96: MAX_PRICE_LIMIT}),
+            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
+            ZERO_BYTES
+        );
+        vm.stopPrank();
+
+        // Verify we're in Bob's range
+        (, currentTick,,) = manager.getSlot0(key.toId());
+        assertGt(currentTick, bobParams.tickLower, "Tick should be in Bob's range");
+        assertLt(currentTick, bobParams.tickUpper, "Tick should be in Bob's range");
+
+        // Wait in Bob's range
+        vm.warp(block.timestamp + timePerRange);
+
+        // Move out of Bob's range
+        vm.startPrank(bob);
+        swapRouter.swap{gas: 10000000}(
+            key,
+            IPoolManager.SwapParams({zeroForOne: false, amountSpecified: 2 ether, sqrtPriceLimitX96: MAX_PRICE_LIMIT}),
+            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
+            ZERO_BYTES
+        );
+        vm.stopPrank();
+
+        // Verify we're outside both ranges
+        (, currentTick,,) = manager.getSlot0(key.toId());
+        assertGt(currentTick, bobParams.tickUpper, "Tick should be above both ranges");
+
+        // Wait outside of both ranges
+        vm.warp(block.timestamp + timePerRange);
+
+        // Move back to Bob's range
+        vm.startPrank(alice);
+        swapRouter.swap{gas: 10000000}(
+            key,
+            IPoolManager.SwapParams({zeroForOne: true, amountSpecified: 1 ether, sqrtPriceLimitX96: MIN_PRICE_LIMIT}),
+            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
+            ZERO_BYTES
+        );
+        vm.stopPrank();
+
+        // Verify we're back in Bob's range
+        (, currentTick,,) = manager.getSlot0(key.toId());
+        assertGt(currentTick, bobParams.tickLower, "Tick should be back in Bob's range");
+        assertLt(currentTick, bobParams.tickUpper, "Tick should be back in Bob's range");
+
+        // Wait outside of both ranges
+        vm.warp(block.timestamp + timePerRange);
+        // Remove all liquidity
+        vm.startPrank(alice);
+        modifyLiquidityRouterAlice.modifyLiquidity(
+            key,
+            IPoolManager.ModifyLiquidityParams({
+                tickLower: aliceParams.tickLower,
+                tickUpper: aliceParams.tickUpper,
+                liquidityDelta: -aliceParams.liquidityDelta,
+                salt: aliceParams.salt
+            }),
+            ZERO_BYTES
+        );
+        vm.stopPrank();
+
+        vm.startPrank(bob);
+        modifyLiquidityRouterBob.modifyLiquidity(
+            key,
+            IPoolManager.ModifyLiquidityParams({
+                tickLower: bobParams.tickLower,
+                tickUpper: bobParams.tickUpper,
+                liquidityDelta: -bobParams.liquidityDelta,
+                salt: bobParams.salt
+            }),
+            ZERO_BYTES
+        );
+        vm.stopPrank();
+
+        // Get accumulated rewards for each user
+        uint256 aliceRewards = hook.accumulatedRewards(address(modifyLiquidityRouterAlice));
+        uint256 bobRewards = hook.accumulatedRewards(address(modifyLiquidityRouterBob));
+
+        // Verify non-zero rewards
+        assertGt(aliceRewards, 0, "Alice should have rewards");
+        assertGt(bobRewards, 0, "Bob should have rewards");
+
+        assertEq(aliceRewards * 2, bobRewards);
     }
 }
