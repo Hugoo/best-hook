@@ -206,7 +206,6 @@ contract LPIncentiveHook is BaseHook {
         view
         returns (uint256)
     {
-
         uint256 secondsPerLiquidityBelow;
         uint256 secondsPerLiquidityAbove;
 
