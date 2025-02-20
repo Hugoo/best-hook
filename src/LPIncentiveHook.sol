@@ -206,7 +206,6 @@ contract LPIncentiveHook is BaseHook {
         view
         returns (uint256)
     {
-        (, int24 currentTick,,) = poolManager.getSlot0(poolId);
 
         uint256 secondsPerLiquidityBelow;
         uint256 secondsPerLiquidityAbove;

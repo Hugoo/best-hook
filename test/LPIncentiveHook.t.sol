@@ -11,7 +11,6 @@ import {PoolKey} from "v4-core/types/PoolKey.sol";
 import {PoolId, PoolIdLibrary} from "v4-core/types/PoolId.sol";
 import {Currency} from "v4-core/types/Currency.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
-import {MockPoolManager} from "./mocks/MockPoolManager.sol";
 import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {BalanceDelta} from "v4-core/types/BalanceDelta.sol";
 import {Hooks} from "v4-core/libraries/Hooks.sol";
