@@ -24,7 +24,6 @@ contract LPIncentiveHookTest is Test, Deployers {
         using StateLibrary for IPoolManager;
 
     LPIncentiveHook hook;
-    MockPoolManager poolManager;
 
     Currency token0;
     Currency token1;
@@ -249,15 +248,16 @@ contract LPIncentiveHookTest is Test, Deployers {
         swapRouter.swap(
             key,
             IPoolManager.SwapParams({
-                zeroForOne:true,
+                zeroForOne: true,
                 amountSpecified: 0.01 ether,
                 sqrtPriceLimitX96: MIN_PRICE_LIMIT // Swap as far as possible
             }),
-                        PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
+            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
             ZERO_BYTES
         );
         vm.stopPrank();
-// Get ending tick
+
+        // Get ending tick
         (, int24 endingTick,,) = manager.getSlot0(poolId);
 
         // Verify tick was crossed
@@ -268,11 +268,11 @@ contract LPIncentiveHookTest is Test, Deployers {
         swapRouter.swap(
             key,
             IPoolManager.SwapParams({
-                zeroForOne:false,
+                zeroForOne: false,
                 amountSpecified: 0.5 ether,
-                sqrtPriceLimitX96: MAX_PRICE_LIMIT// Swap as far as possible
+                sqrtPriceLimitX96: MAX_PRICE_LIMIT // Swap as far as possible
             }),
-                        PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
+            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
             ZERO_BYTES
         );
         vm.stopPrank();

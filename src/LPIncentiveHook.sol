@@ -64,7 +64,7 @@ contract LPIncentiveHook is BaseHook {
         });
     }
 
-    function _afterSwap(address, PoolKey calldata key, IPoolManager.SwapParams calldata, BalanceDelta, bytes calldata)
+    function _afterSwap(address, PoolKey calldata key, IPoolManager.SwapParams calldata params, BalanceDelta, bytes calldata)
         internal
         override
         returns (bytes4, int128)
@@ -73,21 +73,22 @@ contract LPIncentiveHook is BaseHook {
         (, int24 currentTick,,) = poolManager.getSlot0(poolId);
         int24 oldTick = beforeSwapTick[poolId];
 
-        // If we are crossing ticks, we need to update the secondsPerLiquidityOutside for all crossed ticks
+        // If we are crossing ticks, we need to update the secondsPerLiquidity
         if (currentTick != oldTick) {
             updateSecondsPerLiquidity(poolId);
-            // Update secondsPerLiquidityOutside for crossed ticks
+            
+            // Determine which direction we crossed ticks
+            bool zeroForOne = params.zeroForOne;
             int24 tickLower = oldTick < currentTick ? oldTick : currentTick;
             int24 tickUpper = oldTick < currentTick ? currentTick : oldTick;
-            bool tickWasOutside = oldTick < currentTick;
+
+            // Update all crossed ticks
             for (int24 tick = tickLower; tick <= tickUpper; tick++) {
-                updatesecondsPerLiquidityOutsideForTick(poolId, tick, tickWasOutside);
+                updatesecondsPerLiquidityOutsideForTick(poolId, tick, zeroForOne);
             }
         }
 
-        // set beforeSwapTick for next _afterSwap call
         beforeSwapTick[poolId] = currentTick;
-
         return (BaseHook.afterSwap.selector, 0);
     }
 
@@ -105,7 +106,8 @@ contract LPIncentiveHook is BaseHook {
         bytes32 positionKey = Position.calculatePositionKey(sender, params.tickLower, params.tickUpper, params.salt);
         
         updateSecondsPerLiquidity(poolId);
-        updateSecondsPerLiquidityInTicks(poolId, currentTick, params);
+        updatesecondsPerLiquidityOutsideForTick(poolId, params.tickLower, params.tickLower > currentTick); 
+        updatesecondsPerLiquidityOutsideForTick(poolId, params.tickUpper, params.tickUpper > currentTick); 
         updateUserRewards(sender, poolId, params, positionKey);
 
         
@@ -123,8 +125,9 @@ contract LPIncentiveHook is BaseHook {
         bytes32 positionKey = Position.calculatePositionKey(sender, params.tickLower, params.tickUpper, params.salt);
 
         updateSecondsPerLiquidity(poolId);
+        updatesecondsPerLiquidityOutsideForTick(poolId, params.tickLower, params.tickLower > currentTick); 
+        updatesecondsPerLiquidityOutsideForTick(poolId, params.tickUpper, params.tickUpper > currentTick); 
         updateUserRewards(sender, poolId, params, positionKey);
-        updateSecondsPerLiquidityInTicks(poolId, currentTick, params);
 
         return (BaseHook.beforeRemoveLiquidity.selector);
     }
@@ -176,22 +179,25 @@ contract LPIncentiveHook is BaseHook {
         IPoolManager.ModifyLiquidityParams calldata params,
         bytes32 positionKey
     ) internal {
+        // Get position liquidity BEFORE the modification
         (uint128 positionLiquidity) = poolManager.getPositionLiquidity(poolId, positionKey);
 
         // Calculate rewards
-        uint256 secondsPerLiquidityInside =
-            calculateSecondsPerLiquidityInside(poolId, params.tickLower, params.tickUpper);
+        uint256 secondsPerLiquidityInside = calculateSecondsPerLiquidityInside(poolId, params.tickLower, params.tickUpper);
+        uint256 lastSecondsPerLiquidityInside = secondsPerLiquidityInsideDeposit[poolId][positionKey];
 
-        uint256 totalSecondsPerLiquidity =
-            secondsPerLiquidityInside - secondsPerLiquidityInsideDeposit[poolId][positionKey];
+        // Only calculate rewards if this isn't the first deposit
+        if (lastSecondsPerLiquidityInside > 0) {
+            uint256 totalSecondsPerLiquidity = secondsPerLiquidityInside - lastSecondsPerLiquidityInside;
+            
+            // Calculate rewards based on the position's liquidity before the modification
+            if (positionLiquidity > 0) {
+                uint256 rewards = calculateRewards(totalSecondsPerLiquidity, uint256(positionLiquidity));
+                accumulatedRewards[sender] += rewards;
+            }
+        }
 
-        // Calculate rewards based on the absolute value of liquidity
-        // uint256 liquidityAmount = params.liquidityDelta < 0 
-        //     ? uint256(int128(-params.liquidityDelta))  // Use the absolute value when removing liquidity
-        //     : uint256(int128(params.liquidityDelta));  // Use the provided value when adding liquidity
-
-        uint256 rewards = calculateRewards(totalSecondsPerLiquidity, uint256(positionLiquidity));
-        accumulatedRewards[sender] += rewards;
+        // Update the stored secondsPerLiquidityInside for future calculations
         secondsPerLiquidityInsideDeposit[poolId][positionKey] = secondsPerLiquidityInside;
     }
 
