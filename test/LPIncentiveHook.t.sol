@@ -38,6 +38,8 @@ contract LPIncentiveHookTest is Test, Deployers {
     address bob = address(0x2);
     address charlie = address(0x3);
 
+    mapping(address => PoolModifyLiquidityTest) modifyLiquidityRouters;
+
     PoolModifyLiquidityTest modifyLiquidityRouterAlice;
     PoolModifyLiquidityTest modifyLiquidityRouterBob;
     PoolModifyLiquidityTest modifyLiquidityRouterCharlie;
@@ -63,10 +65,14 @@ contract LPIncentiveHookTest is Test, Deployers {
         // Fund hook with reward tokens
         deal(Currency.unwrap(rewardToken), address(hook), 1000000 ether);
 
-        // we deploy two modifyLiquidityRouters, one for each user
+        // we deploy one modifyLiquidityRouter for each user
         modifyLiquidityRouterAlice = new PoolModifyLiquidityTest(manager);
         modifyLiquidityRouterBob = new PoolModifyLiquidityTest(manager);
         modifyLiquidityRouterCharlie = new PoolModifyLiquidityTest(manager);
+
+        modifyLiquidityRouters[alice] = modifyLiquidityRouterAlice;
+        modifyLiquidityRouters[bob] = modifyLiquidityRouterBob;
+        modifyLiquidityRouters[charlie] = modifyLiquidityRouterCharlie;
     }
 
     function test_ProportionalRewardsToTime() public {
@@ -88,53 +94,27 @@ contract LPIncentiveHookTest is Test, Deployers {
         vm.stopPrank();
 
         // Create identical liquidity positions
-        IPoolManager.ModifyLiquidityParams memory params = IPoolManager.ModifyLiquidityParams({
-            tickLower: -120,
-            tickUpper: 120,
-            liquidityDelta: 1000e18,
-            salt: bytes32(0)
-        });
 
-        // Alice adds liquidity
-        vm.prank(alice);
-        modifyLiquidityRouterAlice.modifyLiquidity(key, params, ZERO_BYTES);
+        uint256 liquidity = 1000e18;
+        int24 tickLower = -120;
+        int24 tickUpper = 120;
+
+        addLiquidity(alice, liquidity, tickLower, tickUpper);
 
         // Alice keeps position for 1000 seconds
         uint256 timeDiff = 1000;
         advanceTime(timeDiff);
 
-        // Alice removes liquidity
-        vm.prank(alice);
-        modifyLiquidityRouterAlice.modifyLiquidity(
-            key,
-            IPoolManager.ModifyLiquidityParams({
-                tickLower: params.tickLower,
-                tickUpper: params.tickUpper,
-                liquidityDelta: -params.liquidityDelta,
-                salt: params.salt
-            }),
-            ZERO_BYTES
-        );
+        removeLiquidity(alice, liquidity, tickLower, tickUpper);
 
         // Bob adds liquidity
-        vm.prank(bob);
-        modifyLiquidityRouterBob.modifyLiquidity(key, params, ZERO_BYTES);
+        addLiquidity(bob, liquidity, tickLower, tickUpper);
 
         // keeping it 2x in the contract
         advanceTime(timeDiff * 2);
 
         // Bob removes liquidity
-        vm.prank(bob);
-        modifyLiquidityRouterBob.modifyLiquidity(
-            key,
-            IPoolManager.ModifyLiquidityParams({
-                tickLower: params.tickLower,
-                tickUpper: params.tickUpper,
-                liquidityDelta: -params.liquidityDelta,
-                salt: params.salt
-            }),
-            ZERO_BYTES
-        );
+        removeLiquidity(bob, liquidity, tickLower, tickUpper);
 
         // Get accumulated rewards
         uint256 aliceRewards = hook.accumulatedRewards(address(modifyLiquidityRouterAlice));
@@ -167,60 +147,21 @@ contract LPIncentiveHookTest is Test, Deployers {
         vm.stopPrank();
 
         // Create test params for liquidity positions with ticks that are multiples of 60
-        IPoolManager.ModifyLiquidityParams memory aliceParams = IPoolManager.ModifyLiquidityParams({
-            tickLower: -120,
-            tickUpper: 120,
-            liquidityDelta: 1000e18,
-            salt: bytes32(0)
-        });
+        int24 tickLower = -120;
+        int24 tickUpper = 120;
+        uint256 liquidity = 1000e18;
 
-        IPoolManager.ModifyLiquidityParams memory bobParams = IPoolManager.ModifyLiquidityParams({
-            tickLower: aliceParams.tickLower,
-            tickUpper: aliceParams.tickUpper,
-            liquidityDelta: aliceParams.liquidityDelta * 2, // Bob adds twice the liquidity
-            salt: bytes32(0)
-        });
-
-        // Alice adds liquidity
-        vm.prank(alice);
-        modifyLiquidityRouterAlice.modifyLiquidity(key, aliceParams, ZERO_BYTES);
-
-        // Bob adds liquidity
-        vm.prank(bob);
-        modifyLiquidityRouterBob.modifyLiquidity(key, bobParams, ZERO_BYTES);
+        addLiquidity(alice, liquidity, tickLower, tickUpper);
+        addLiquidity(bob, liquidity * 2, tickLower, tickUpper);
 
         advanceTime(1000);
 
-        // Remove liquidity
-        vm.prank(alice);
-        modifyLiquidityRouterAlice.modifyLiquidity(
-            key,
-            IPoolManager.ModifyLiquidityParams({
-                tickLower: aliceParams.tickLower,
-                tickUpper: aliceParams.tickUpper,
-                liquidityDelta: -aliceParams.liquidityDelta,
-                salt: aliceParams.salt
-            }),
-            ZERO_BYTES
-        );
-
-        vm.prank(bob);
-        modifyLiquidityRouterBob.modifyLiquidity(
-            key,
-            IPoolManager.ModifyLiquidityParams({
-                tickLower: bobParams.tickLower,
-                tickUpper: bobParams.tickUpper,
-                liquidityDelta: -bobParams.liquidityDelta,
-                salt: bobParams.salt
-            }),
-            ZERO_BYTES
-        );
+        removeLiquidity(alice, liquidity, tickLower, tickUpper);
+        removeLiquidity(bob, liquidity * 2, tickLower, tickUpper);
 
         // Get secondsperliquidityOutisde for both ticks
-        uint256 aliceSecondsPerLiquidityOutsideLower =
-            hook.secondsPerLiquidityOutside(key.toId(), aliceParams.tickLower);
-        uint256 aliceSecondsPerLiquidityOutsideUpper =
-            hook.secondsPerLiquidityOutside(key.toId(), aliceParams.tickUpper);
+        uint256 aliceSecondsPerLiquidityOutsideLower = hook.secondsPerLiquidityOutside(key.toId(), tickLower);
+        uint256 aliceSecondsPerLiquidityOutsideUpper = hook.secondsPerLiquidityOutside(key.toId(), tickUpper);
         // assert that they are greater than zero
         assertEq(
             aliceSecondsPerLiquidityOutsideLower, 0, "Alice's secondsPerLiquidityOutsideLower should be greater than 0"
@@ -301,31 +242,15 @@ contract LPIncentiveHookTest is Test, Deployers {
 
         // Create liquidity position far above current price
         // Note: Pool is initialized at SQRT_PRICE_1_1 which corresponds to tick 0
-        IPoolManager.ModifyLiquidityParams memory params = IPoolManager.ModifyLiquidityParams({
-            tickLower: 3600, // Position way above current price
-            tickUpper: 3720,
-            liquidityDelta: 1000e18,
-            salt: bytes32(0)
-        });
+        int24 tickLower = 3600; // Position way above current price
+        int24 tickUpper = 3720;
+        uint256 liquidity = 1000e18;
 
-        // Add liquidity
-        vm.prank(alice);
-        modifyLiquidityRouterAlice.modifyLiquidity(key, params, ZERO_BYTES);
+        addLiquidity(alice, liquidity, tickLower, tickUpper);
 
         advanceTime(1000);
 
-        // Remove liquidity
-        vm.prank(alice);
-        modifyLiquidityRouterAlice.modifyLiquidity(
-            key,
-            IPoolManager.ModifyLiquidityParams({
-                tickLower: params.tickLower,
-                tickUpper: params.tickUpper,
-                liquidityDelta: -params.liquidityDelta,
-                salt: params.salt
-            }),
-            ZERO_BYTES
-        );
+        removeLiquidity(alice, liquidity, tickLower, tickUpper);
 
         // Check rewards - should be zero since position was never in range
         uint256 aliceRewards = hook.accumulatedRewards(address(modifyLiquidityRouterAlice));
@@ -360,27 +285,15 @@ contract LPIncentiveHookTest is Test, Deployers {
         vm.stopPrank();
 
         // Create test params for liquidity positions with ticks that are multiples of 60
-        IPoolManager.ModifyLiquidityParams memory aliceParams = IPoolManager.ModifyLiquidityParams({
-            tickLower: -120,
-            tickUpper: 60,
-            liquidityDelta: 1000e18,
-            salt: bytes32(0)
-        });
+        int24 tickLowerAlice = -120;
+        int24 tickUpperAlice = 60;
+        int24 tickLowerBob = tickUpperAlice;
+        int24 tickUpperBob = 240;
 
-        IPoolManager.ModifyLiquidityParams memory bobParams = IPoolManager.ModifyLiquidityParams({
-            tickLower: 60,
-            tickUpper: 240,
-            liquidityDelta: aliceParams.liquidityDelta * 2, // Bob adds twice the liquidity of Alice
-            salt: bytes32(0)
-        });
+        uint256 liquidity = 1000e18;
 
-        // Alice adds liquidity
-        vm.prank(alice);
-        modifyLiquidityRouterAlice.modifyLiquidity(key, aliceParams, ZERO_BYTES);
-
-        // Bob adds liquidity
-        vm.prank(bob);
-        modifyLiquidityRouterBob.modifyLiquidity(key, bobParams, ZERO_BYTES);
+        addLiquidity(alice, liquidity, tickLowerAlice, tickUpperAlice);
+        addLiquidity(bob, liquidity * 2, tickLowerBob, tickUpperBob);
 
         (, int24 startingTick,,) = manager.getSlot0(key.toId());
 
@@ -406,35 +319,14 @@ contract LPIncentiveHookTest is Test, Deployers {
 
         // Verify tick was crossed
         assertNotEq(startingTick, endingTick, "Tick should have changed");
-        assertGt(endingTick, bobParams.tickLower, "Tick should be in Bob's range");
+        assertGt(endingTick, tickLowerBob, "Tick should be in Bob's range");
 
         // Spend timeDiff in Bob's range
         advanceTime(timeDiff);
 
         // Remove liquidity
-        vm.prank(alice);
-        modifyLiquidityRouterAlice.modifyLiquidity(
-            key,
-            IPoolManager.ModifyLiquidityParams({
-                tickLower: aliceParams.tickLower,
-                tickUpper: aliceParams.tickUpper,
-                liquidityDelta: -aliceParams.liquidityDelta,
-                salt: aliceParams.salt
-            }),
-            ZERO_BYTES
-        );
-
-        vm.prank(bob);
-        modifyLiquidityRouterBob.modifyLiquidity(
-            key,
-            IPoolManager.ModifyLiquidityParams({
-                tickLower: bobParams.tickLower,
-                tickUpper: bobParams.tickUpper,
-                liquidityDelta: -bobParams.liquidityDelta,
-                salt: bobParams.salt
-            }),
-            ZERO_BYTES
-        );
+        removeLiquidity(alice, liquidity, tickLowerAlice, tickUpperAlice);
+        removeLiquidity(bob, liquidity * 2, tickLowerBob, tickUpperBob);
 
         // Get accumulated rewards
         uint256 aliceRewards = hook.accumulatedRewards(address(modifyLiquidityRouterAlice));
@@ -479,27 +371,15 @@ contract LPIncentiveHookTest is Test, Deployers {
         IERC20(Currency.unwrap(token1)).approve(address(modifyLiquidityRouterBob), type(uint256).max);
         vm.stopPrank();
 
-        // Create test params for liquidity positions
-        IPoolManager.ModifyLiquidityParams memory aliceParams = IPoolManager.ModifyLiquidityParams({
-            tickLower: -120,
-            tickUpper: 60,
-            liquidityDelta: 1000e18,
-            salt: bytes32(0)
-        });
+        int24 tickLowerAlice = -120;
+        int24 tickUpperAlice = 60;
+        int24 tickLowerBob = tickUpperAlice;
+        int24 tickUpperBob = 240;
 
-        IPoolManager.ModifyLiquidityParams memory bobParams = IPoolManager.ModifyLiquidityParams({
-            tickLower: 60,
-            tickUpper: 240,
-            liquidityDelta: aliceParams.liquidityDelta * 2, // Bob adds twice the liquidity of Alice
-            salt: bytes32(0)
-        });
+        uint256 liquidity = 1000e18;
 
-        // Add liquidity for both users
-        vm.prank(alice);
-        modifyLiquidityRouterAlice.modifyLiquidity(key, aliceParams, ZERO_BYTES);
-
-        vm.prank(bob);
-        modifyLiquidityRouterBob.modifyLiquidity(key, bobParams, ZERO_BYTES);
+        addLiquidity(alice, liquidity, tickLowerAlice, tickUpperAlice);
+        addLiquidity(bob, liquidity * 2, tickLowerBob, tickUpperBob); // Bob adds twice the liquidity of Alice
 
         (, int24 startingTick,,) = manager.getSlot0(key.toId());
         uint256 timeDiff = 1000;
@@ -521,35 +401,13 @@ contract LPIncentiveHookTest is Test, Deployers {
 
         // Verify tick was crossed
         assertNotEq(startingTick, endingTick, "Tick should have changed");
-        assertGt(endingTick, bobParams.tickLower, "Tick should be in Bob's range");
+        assertGt(endingTick, tickLowerBob, "Tick should be in Bob's range");
 
         // Spend remaining 25% of time in Bob's range
         advanceTime(timeDiff * 1 / 4);
 
-        // Remove liquidity for both users
-        vm.prank(alice);
-        modifyLiquidityRouterAlice.modifyLiquidity(
-            key,
-            IPoolManager.ModifyLiquidityParams({
-                tickLower: aliceParams.tickLower,
-                tickUpper: aliceParams.tickUpper,
-                liquidityDelta: -aliceParams.liquidityDelta,
-                salt: aliceParams.salt
-            }),
-            ZERO_BYTES
-        );
-
-        vm.prank(bob);
-        modifyLiquidityRouterBob.modifyLiquidity(
-            key,
-            IPoolManager.ModifyLiquidityParams({
-                tickLower: bobParams.tickLower,
-                tickUpper: bobParams.tickUpper,
-                liquidityDelta: -bobParams.liquidityDelta,
-                salt: bobParams.salt
-            }),
-            ZERO_BYTES
-        );
+        removeLiquidity(alice, liquidity, tickLowerAlice, tickUpperAlice);
+        removeLiquidity(bob, liquidity * 2, tickLowerBob, tickUpperBob);
 
         // Get accumulated rewards
         uint256 aliceRewards = hook.accumulatedRewards(address(modifyLiquidityRouterAlice));
@@ -597,42 +455,26 @@ contract LPIncentiveHookTest is Test, Deployers {
         vm.stopPrank();
 
         // charlie adds liquidity for a whole range
-        IPoolManager.ModifyLiquidityParams memory charlieParams = IPoolManager.ModifyLiquidityParams({
-            tickLower: 240,
-            tickUpper: 600,
-            liquidityDelta: 1000e18,
-            salt: bytes32(0)
-        });
-
-        vm.prank(charlie);
-        modifyLiquidityRouterCharlie.modifyLiquidity(key, charlieParams, ZERO_BYTES);
+        int24 tickLowerCharlie = 240;
+        int24 tickUpperCharlie = 600;
 
         // Create three adjacent liquidity ranges
-        IPoolManager.ModifyLiquidityParams memory aliceParams = IPoolManager.ModifyLiquidityParams({
-            tickLower: -120,
-            tickUpper: 60,
-            liquidityDelta: 1000e18,
-            salt: bytes32(0)
-        });
+        int24 tickLowerAlice = -120;
+        int24 tickUpperAlice = 60;
 
-        IPoolManager.ModifyLiquidityParams memory bobParams = IPoolManager.ModifyLiquidityParams({
-            tickLower: 60,
-            tickUpper: 240,
-            liquidityDelta: 1000e18,
-            salt: bytes32(0)
-        });
+        int24 tickLowerBob = tickUpperAlice;
+        int24 tickUpperBob = 240;
 
-        // Add liquidity for each user in their respective ranges
-        vm.prank(alice);
-        modifyLiquidityRouterAlice.modifyLiquidity(key, aliceParams, ZERO_BYTES);
+        uint256 liquidity = 1000e18;
 
-        vm.prank(bob);
-        modifyLiquidityRouterBob.modifyLiquidity(key, bobParams, ZERO_BYTES);
+        addLiquidity(charlie, liquidity, tickLowerCharlie, tickUpperCharlie);
+        addLiquidity(alice, liquidity, tickLowerAlice, tickUpperAlice);
+        addLiquidity(bob, liquidity, tickLowerBob, tickUpperBob);
 
         // Get initial tick
         (, int24 currentTick,,) = manager.getSlot0(key.toId());
-        assertGt(currentTick, aliceParams.tickLower, "Initial tick should be in Alice's range");
-        assertLt(currentTick, aliceParams.tickUpper, "Initial tick should be in Alice's range");
+        assertGt(currentTick, tickLowerAlice, "Initial tick should be in Alice's range");
+        assertLt(currentTick, tickUpperAlice, "Initial tick should be in Alice's range");
 
         uint256 timePerRange = 1000;
 
@@ -650,8 +492,8 @@ contract LPIncentiveHookTest is Test, Deployers {
 
         // Verify we're in Bob's range
         (, currentTick,,) = manager.getSlot0(key.toId());
-        assertGt(currentTick, bobParams.tickLower, "Tick should be in Bob's range");
-        assertLt(currentTick, bobParams.tickUpper, "Tick should be in Bob's range");
+        assertGt(currentTick, tickLowerBob, "Tick should be in Bob's range");
+        assertLt(currentTick, tickUpperBob, "Tick should be in Bob's range");
 
         // Wait in Bob's range
         advanceTime(timePerRange);
@@ -667,7 +509,7 @@ contract LPIncentiveHookTest is Test, Deployers {
 
         // Verify we're outside both ranges
         (, currentTick,,) = manager.getSlot0(key.toId());
-        assertGt(currentTick, bobParams.tickUpper, "Tick should be above both ranges");
+        assertGt(currentTick, tickUpperBob, "Tick should be above both ranges");
 
         // Wait outside of both ranges
         advanceTime(timePerRange);
@@ -683,36 +525,15 @@ contract LPIncentiveHookTest is Test, Deployers {
 
         // Verify we're back in Bob's range
         (, currentTick,,) = manager.getSlot0(key.toId());
-        assertGt(currentTick, bobParams.tickLower, "Tick should be back in Bob's range");
-        assertLt(currentTick, bobParams.tickUpper, "Tick should be back in Bob's range");
+        assertGt(currentTick, tickLowerBob, "Tick should be back in Bob's range");
+        assertLt(currentTick, tickUpperBob, "Tick should be back in Bob's range");
 
         // Wait outside of both ranges
         advanceTime(timePerRange);
 
         // Remove all liquidity
-        vm.prank(alice);
-        modifyLiquidityRouterAlice.modifyLiquidity(
-            key,
-            IPoolManager.ModifyLiquidityParams({
-                tickLower: aliceParams.tickLower,
-                tickUpper: aliceParams.tickUpper,
-                liquidityDelta: -aliceParams.liquidityDelta,
-                salt: aliceParams.salt
-            }),
-            ZERO_BYTES
-        );
-
-        vm.prank(bob);
-        modifyLiquidityRouterBob.modifyLiquidity(
-            key,
-            IPoolManager.ModifyLiquidityParams({
-                tickLower: bobParams.tickLower,
-                tickUpper: bobParams.tickUpper,
-                liquidityDelta: -bobParams.liquidityDelta,
-                salt: bobParams.salt
-            }),
-            ZERO_BYTES
-        );
+        removeLiquidity(alice, liquidity, tickLowerAlice, tickUpperAlice);
+        removeLiquidity(bob, liquidity, tickLowerBob, tickUpperBob);
 
         // Get accumulated rewards for each user
         uint256 aliceRewards = hook.accumulatedRewards(address(modifyLiquidityRouterAlice));
@@ -729,5 +550,27 @@ contract LPIncentiveHookTest is Test, Deployers {
 
     function advanceTime(uint256 seconds_) internal {
         vm.warp(block.timestamp + seconds_);
+    }
+
+    function addLiquidity(address user, uint256 liquidityToAdd, int24 tickLower, int24 tickUpper) internal {
+        adjustLiquidity(user, int256(liquidityToAdd), tickLower, tickUpper);
+    }
+
+    function removeLiquidity(address user, uint256 liquidityToRemove, int24 tickLower, int24 tickUpper) internal {
+        adjustLiquidity(user, -int256(liquidityToRemove), tickLower, tickUpper);
+    }
+
+    function adjustLiquidity(address user, int256 liquidityDelta, int24 tickLower, int24 tickUpper) internal {
+        vm.prank(user);
+        modifyLiquidityRouters[user].modifyLiquidity(
+            key,
+            IPoolManager.ModifyLiquidityParams({
+                tickLower: tickLower,
+                tickUpper: tickUpper,
+                liquidityDelta: liquidityDelta,
+                salt: bytes32(0)
+            }),
+            ZERO_BYTES
+        );
     }
 }
