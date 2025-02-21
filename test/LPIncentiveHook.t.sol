@@ -252,7 +252,7 @@ contract LPIncentiveHookTest is Test, Deployers {
     function test_CloseLiquidityTickHalveTimeInAliceRange() public {
         //  Liquidity Distribution
         //          price
-        //  -120 ---- 0 ---- 60 --------  240
+        //  -120 ---- 0 ---- 60 ---------- 240
         //
         //     ---------------                   <- Alice (1x liquidity)
         //                    ===============    <- Bob   (2x liquidity)
@@ -339,7 +339,7 @@ contract LPIncentiveHookTest is Test, Deployers {
     function test_CloseLiquidityTickThreeQuartersTimeInAliceRange() public {
         //  Liquidity Distribution
         //          price
-        //  -120 ---- 0 ---- 60 --------  240
+        //  -120 ---- 0 ---- 60 --------- 240
         //
         //     ---------------                   <- Alice (1x liquidity)
         //                    ===============    <- Bob   (2x liquidity)
@@ -418,6 +418,34 @@ contract LPIncentiveHookTest is Test, Deployers {
     }
 
     function test_ThreeRangeMovement() public {
+        //  Liquidity Distribution
+        //          price
+        //  -120 ----- 0 ----- 60 ---------- 240 ---------- 420 ---------- 600
+        //
+        //                                    ------------------------------   <- Charlie (1x liquidity)
+        //      ---------------                                                <- Alice (1x liquidity)
+        //                     ---------------                                 <- Bob   (1x liquidity)
+
+        // Create three adjacent liquidity ranges
+
+        // Charlie adds liquidity for a whole range
+        // 2 x 180 = 360 ticks wide
+        int24 tickLowerCharlie = 240;
+        int24 tickUpperCharlie = 600;
+
+        // 180 ticks wide
+        int24 tickLowerAlice = -120;
+        int24 tickUpperAlice = 60;
+
+        // 180 ticks wide
+        int24 tickLowerBob = tickUpperAlice;
+        int24 tickUpperBob = 240;
+
+        require(tickUpperAlice <= tickUpperBob, "tickUpperAlice should be <= tickUpperBob");
+        require(tickUpperBob <= tickUpperCharlie, "tickUpperBob should be <= tickUpperCharlie");
+
+        uint256 liquidity = 1000e18;
+
         // Deal tokens to users
         deal(Currency.unwrap(token0), alice, 100000 ether);
         deal(Currency.unwrap(token1), alice, 100000 ether);
@@ -445,19 +473,6 @@ contract LPIncentiveHookTest is Test, Deployers {
         IERC20(Currency.unwrap(token0)).approve(address(modifyLiquidityRouters[charlie]), type(uint256).max);
         IERC20(Currency.unwrap(token1)).approve(address(modifyLiquidityRouters[charlie]), type(uint256).max);
         vm.stopPrank();
-
-        // charlie adds liquidity for a whole range
-        int24 tickLowerCharlie = 240;
-        int24 tickUpperCharlie = 600;
-
-        // Create three adjacent liquidity ranges
-        int24 tickLowerAlice = -120;
-        int24 tickUpperAlice = 60;
-
-        int24 tickLowerBob = tickUpperAlice;
-        int24 tickUpperBob = 240;
-
-        uint256 liquidity = 1000e18;
 
         addLiquidity(charlie, liquidity, tickLowerCharlie, tickUpperCharlie);
         addLiquidity(alice, liquidity, tickLowerAlice, tickUpperAlice);
@@ -499,9 +514,9 @@ contract LPIncentiveHookTest is Test, Deployers {
             ZERO_BYTES
         );
 
-        // Verify we're outside both ranges
+        // Verify we're outside both Alice's and Bob's ranges
         (, currentTick,,) = manager.getSlot0(key.toId());
-        assertGt(currentTick, tickUpperBob, "Tick should be above both ranges");
+        assertGt(currentTick, tickUpperBob, "Tick should be above Alice's and Bob's ranges");
 
         // Wait outside of both ranges
         advanceTime(timePerRange);
@@ -538,7 +553,9 @@ contract LPIncentiveHookTest is Test, Deployers {
         assertEq(aliceRewards * 2, bobRewards);
     }
 
-    // internal helper functions
+    // -----------------------------
+    //   internal helper functions
+    // -----------------------------
 
     function advanceTime(uint256 seconds_) internal {
         vm.warp(block.timestamp + seconds_);
