@@ -96,16 +96,15 @@ contract LPIncentiveHookTest is Test, Deployers {
         });
 
         // Alice adds liquidity
-        vm.startPrank(alice);
+        vm.prank(alice);
         modifyLiquidityRouterAlice.modifyLiquidity(key, params, ZERO_BYTES);
-        vm.stopPrank();
 
         // Alice keeps position for 1000 seconds
         uint256 timeDiff = 1000;
         advanceTime(timeDiff);
 
         // Alice removes liquidity
-        vm.startPrank(alice);
+        vm.prank(alice);
         modifyLiquidityRouterAlice.modifyLiquidity(
             key,
             IPoolManager.ModifyLiquidityParams({
@@ -116,18 +115,16 @@ contract LPIncentiveHookTest is Test, Deployers {
             }),
             ZERO_BYTES
         );
-        vm.stopPrank();
 
         // Bob adds liquidity
-        vm.startPrank(bob);
+        vm.prank(bob);
         modifyLiquidityRouterBob.modifyLiquidity(key, params, ZERO_BYTES);
-        vm.stopPrank();
 
         // keeping it 2x in the contract
         advanceTime(timeDiff * 2);
 
         // Bob removes liquidity
-        vm.startPrank(bob);
+        vm.prank(bob);
         modifyLiquidityRouterBob.modifyLiquidity(
             key,
             IPoolManager.ModifyLiquidityParams({
@@ -138,7 +135,6 @@ contract LPIncentiveHookTest is Test, Deployers {
             }),
             ZERO_BYTES
         );
-        vm.stopPrank();
 
         // Get accumulated rewards
         uint256 aliceRewards = hook.accumulatedRewards(address(modifyLiquidityRouterAlice));
@@ -186,19 +182,17 @@ contract LPIncentiveHookTest is Test, Deployers {
         });
 
         // Alice adds liquidity
-        vm.startPrank(alice);
+        vm.prank(alice);
         modifyLiquidityRouterAlice.modifyLiquidity(key, aliceParams, ZERO_BYTES);
-        vm.stopPrank();
 
         // Bob adds liquidity
-        vm.startPrank(bob);
+        vm.prank(bob);
         modifyLiquidityRouterBob.modifyLiquidity(key, bobParams, ZERO_BYTES);
-        vm.stopPrank();
 
         advanceTime(1000);
 
         // Remove liquidity
-        vm.startPrank(alice);
+        vm.prank(alice);
         modifyLiquidityRouterAlice.modifyLiquidity(
             key,
             IPoolManager.ModifyLiquidityParams({
@@ -209,9 +203,8 @@ contract LPIncentiveHookTest is Test, Deployers {
             }),
             ZERO_BYTES
         );
-        vm.stopPrank();
 
-        vm.startPrank(bob);
+        vm.prank(bob);
         modifyLiquidityRouterBob.modifyLiquidity(
             key,
             IPoolManager.ModifyLiquidityParams({
@@ -222,7 +215,6 @@ contract LPIncentiveHookTest is Test, Deployers {
             }),
             ZERO_BYTES
         );
-        vm.stopPrank();
 
         // Get secondsperliquidityOutisde for both ticks
         uint256 aliceSecondsPerLiquidityOutsideLower =
@@ -317,14 +309,13 @@ contract LPIncentiveHookTest is Test, Deployers {
         });
 
         // Add liquidity
-        vm.startPrank(alice);
+        vm.prank(alice);
         modifyLiquidityRouterAlice.modifyLiquidity(key, params, ZERO_BYTES);
-        vm.stopPrank();
 
         advanceTime(1000);
 
         // Remove liquidity
-        vm.startPrank(alice);
+        vm.prank(alice);
         modifyLiquidityRouterAlice.modifyLiquidity(
             key,
             IPoolManager.ModifyLiquidityParams({
@@ -335,7 +326,6 @@ contract LPIncentiveHookTest is Test, Deployers {
             }),
             ZERO_BYTES
         );
-        vm.stopPrank();
 
         // Check rewards - should be zero since position was never in range
         uint256 aliceRewards = hook.accumulatedRewards(address(modifyLiquidityRouterAlice));
@@ -378,21 +368,20 @@ contract LPIncentiveHookTest is Test, Deployers {
         });
 
         // Alice adds liquidity
-        vm.startPrank(alice);
+        vm.prank(alice);
         modifyLiquidityRouterAlice.modifyLiquidity(key, aliceParams, ZERO_BYTES);
-        vm.stopPrank();
 
         // Bob adds liquidity
-        vm.startPrank(bob);
+        vm.prank(bob);
         modifyLiquidityRouterBob.modifyLiquidity(key, bobParams, ZERO_BYTES);
-        vm.stopPrank();
+
         (, int24 startingTick,,) = manager.getSlot0(key.toId());
 
         uint256 timeDiff = 1000;
         advanceTime(timeDiff);
 
         // Perform a large swap to cross ticks into Bob's range
-        vm.startPrank(alice);
+        vm.prank(alice);
         swapRouter.swap{gas: 10000000}(
             key,
             IPoolManager.SwapParams({
@@ -403,7 +392,6 @@ contract LPIncentiveHookTest is Test, Deployers {
             PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
             ZERO_BYTES
         );
-        vm.stopPrank();
 
         // Get ending tick
         (, int24 endingTick,,) = manager.getSlot0(key.toId());
@@ -415,7 +403,7 @@ contract LPIncentiveHookTest is Test, Deployers {
         advanceTime(timeDiff);
 
         // Remove liquidity
-        vm.startPrank(alice);
+        vm.prank(alice);
         modifyLiquidityRouterAlice.modifyLiquidity(
             key,
             IPoolManager.ModifyLiquidityParams({
@@ -426,9 +414,8 @@ contract LPIncentiveHookTest is Test, Deployers {
             }),
             ZERO_BYTES
         );
-        vm.stopPrank();
 
-        vm.startPrank(bob);
+        vm.prank(bob);
         modifyLiquidityRouterBob.modifyLiquidity(
             key,
             IPoolManager.ModifyLiquidityParams({
@@ -439,7 +426,7 @@ contract LPIncentiveHookTest is Test, Deployers {
             }),
             ZERO_BYTES
         );
-        vm.stopPrank();
+
         // Get accumulated rewards
         uint256 aliceRewards = hook.accumulatedRewards(address(modifyLiquidityRouterAlice));
         uint256 bobRewards = hook.accumulatedRewards(address(modifyLiquidityRouterBob));
@@ -488,13 +475,11 @@ contract LPIncentiveHookTest is Test, Deployers {
         });
 
         // Add liquidity for both users
-        vm.startPrank(alice);
+        vm.prank(alice);
         modifyLiquidityRouterAlice.modifyLiquidity(key, aliceParams, ZERO_BYTES);
-        vm.stopPrank();
 
-        vm.startPrank(bob);
+        vm.prank(bob);
         modifyLiquidityRouterBob.modifyLiquidity(key, bobParams, ZERO_BYTES);
-        vm.stopPrank();
 
         (, int24 startingTick,,) = manager.getSlot0(key.toId());
         uint256 timeDiff = 1000;
@@ -503,14 +488,13 @@ contract LPIncentiveHookTest is Test, Deployers {
         advanceTime(timeDiff * 3 / 4);
 
         // Perform swap to cross into Bob's range
-        vm.startPrank(alice);
+        vm.prank(alice);
         swapRouter.swap{gas: 10000000}(
             key,
             IPoolManager.SwapParams({zeroForOne: false, amountSpecified: 4 ether, sqrtPriceLimitX96: MAX_PRICE_LIMIT}),
             PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
             ZERO_BYTES
         );
-        vm.stopPrank();
 
         // Get ending tick
         (, int24 endingTick,,) = manager.getSlot0(key.toId());
@@ -523,7 +507,7 @@ contract LPIncentiveHookTest is Test, Deployers {
         advanceTime(timeDiff * 1 / 4);
 
         // Remove liquidity for both users
-        vm.startPrank(alice);
+        vm.prank(alice);
         modifyLiquidityRouterAlice.modifyLiquidity(
             key,
             IPoolManager.ModifyLiquidityParams({
@@ -534,9 +518,8 @@ contract LPIncentiveHookTest is Test, Deployers {
             }),
             ZERO_BYTES
         );
-        vm.stopPrank();
 
-        vm.startPrank(bob);
+        vm.prank(bob);
         modifyLiquidityRouterBob.modifyLiquidity(
             key,
             IPoolManager.ModifyLiquidityParams({
@@ -547,7 +530,6 @@ contract LPIncentiveHookTest is Test, Deployers {
             }),
             ZERO_BYTES
         );
-        vm.stopPrank();
 
         // Get accumulated rewards
         uint256 aliceRewards = hook.accumulatedRewards(address(modifyLiquidityRouterAlice));
@@ -601,9 +583,9 @@ contract LPIncentiveHookTest is Test, Deployers {
             liquidityDelta: 1000e18,
             salt: bytes32(0)
         });
-        vm.startPrank(charlie);
+
+        vm.prank(charlie);
         modifyLiquidityRouterCharlie.modifyLiquidity(key, charlieParams, ZERO_BYTES);
-        vm.stopPrank();
 
         // Create three adjacent liquidity ranges
         IPoolManager.ModifyLiquidityParams memory aliceParams = IPoolManager.ModifyLiquidityParams({
@@ -621,13 +603,11 @@ contract LPIncentiveHookTest is Test, Deployers {
         });
 
         // Add liquidity for each user in their respective ranges
-        vm.startPrank(alice);
+        vm.prank(alice);
         modifyLiquidityRouterAlice.modifyLiquidity(key, aliceParams, ZERO_BYTES);
-        vm.stopPrank();
 
-        vm.startPrank(bob);
+        vm.prank(bob);
         modifyLiquidityRouterBob.modifyLiquidity(key, bobParams, ZERO_BYTES);
-        vm.stopPrank();
 
         // Get initial tick
         (, int24 currentTick,,) = manager.getSlot0(key.toId());
@@ -640,14 +620,13 @@ contract LPIncentiveHookTest is Test, Deployers {
         advanceTime(timePerRange);
 
         // Move to Bob's range
-        vm.startPrank(alice);
+        vm.prank(alice);
         swapRouter.swap{gas: 10000000}(
             key,
             IPoolManager.SwapParams({zeroForOne: false, amountSpecified: 10 ether, sqrtPriceLimitX96: MAX_PRICE_LIMIT}),
             PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
             ZERO_BYTES
         );
-        vm.stopPrank();
 
         // Verify we're in Bob's range
         (, currentTick,,) = manager.getSlot0(key.toId());
@@ -658,14 +637,13 @@ contract LPIncentiveHookTest is Test, Deployers {
         advanceTime(timePerRange);
 
         // Move out of Bob's range
-        vm.startPrank(bob);
+        vm.prank(bob);
         swapRouter.swap{gas: 10000000}(
             key,
             IPoolManager.SwapParams({zeroForOne: false, amountSpecified: 2 ether, sqrtPriceLimitX96: MAX_PRICE_LIMIT}),
             PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
             ZERO_BYTES
         );
-        vm.stopPrank();
 
         // Verify we're outside both ranges
         (, currentTick,,) = manager.getSlot0(key.toId());
@@ -675,14 +653,13 @@ contract LPIncentiveHookTest is Test, Deployers {
         advanceTime(timePerRange);
 
         // Move back to Bob's range
-        vm.startPrank(alice);
+        vm.prank(alice);
         swapRouter.swap{gas: 10000000}(
             key,
             IPoolManager.SwapParams({zeroForOne: true, amountSpecified: 1 ether, sqrtPriceLimitX96: MIN_PRICE_LIMIT}),
             PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
             ZERO_BYTES
         );
-        vm.stopPrank();
 
         // Verify we're back in Bob's range
         (, currentTick,,) = manager.getSlot0(key.toId());
@@ -693,7 +670,7 @@ contract LPIncentiveHookTest is Test, Deployers {
         advanceTime(timePerRange);
 
         // Remove all liquidity
-        vm.startPrank(alice);
+        vm.prank(alice);
         modifyLiquidityRouterAlice.modifyLiquidity(
             key,
             IPoolManager.ModifyLiquidityParams({
@@ -704,9 +681,8 @@ contract LPIncentiveHookTest is Test, Deployers {
             }),
             ZERO_BYTES
         );
-        vm.stopPrank();
 
-        vm.startPrank(bob);
+        vm.prank(bob);
         modifyLiquidityRouterBob.modifyLiquidity(
             key,
             IPoolManager.ModifyLiquidityParams({
@@ -717,7 +693,6 @@ contract LPIncentiveHookTest is Test, Deployers {
             }),
             ZERO_BYTES
         );
-        vm.stopPrank();
 
         // Get accumulated rewards for each user
         uint256 aliceRewards = hook.accumulatedRewards(address(modifyLiquidityRouterAlice));
