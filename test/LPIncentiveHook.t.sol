@@ -111,7 +111,7 @@ contract LPIncentiveHookTest is Test, Deployers {
         uint256 bobRewards = hook.accumulatedRewards(address(modifyLiquidityRouters[bob]));
 
         // Bob should have approximately twice the rewards as Alice since he stayed twice as long
-        assertEq(bobRewards, aliceRewards * 2); // 1% tolerance
+        assertEq(bobRewards, aliceRewards * 2, "Bob should have twice the rewards of Alice");
 
         // Both should have non-zero rewards
         assertGt(aliceRewards, 0, "Alice should have rewards");
@@ -165,10 +165,7 @@ contract LPIncentiveHookTest is Test, Deployers {
         uint256 aliceRewards = hook.accumulatedRewards(address(modifyLiquidityRouters[alice]));
         uint256 bobRewards = hook.accumulatedRewards(address(modifyLiquidityRouters[bob]));
 
-        // Bob should have approximately twice the rewards as Alice
-        assertEq(bobRewards, aliceRewards * 2);
-
-        // Both should have non-zero rewards
+        assertEq(bobRewards, aliceRewards * 2, "Bob should have twice the rewards of Alice");
         assertGt(aliceRewards, 0, "Alice should have rewards");
         assertGt(bobRewards, 0, "Bob should have rewards");
     }
@@ -286,10 +283,15 @@ contract LPIncentiveHookTest is Test, Deployers {
         addLiquidity(bob, liquidity * 2, tickLowerBob, tickUpperBob);
 
         (, int24 startingTick,,) = manager.getSlot0(key.toId());
+        assertGt(startingTick, tickLowerAlice, "Initial tick should be in Alice's range. Above her lower tick");
+        assertLt(startingTick, tickUpperAlice, "Initial tick should be in Alice's range. Below her upper tick");
 
-        // Spend timeDiff in Alice's range
         uint256 timeDiff = 1000;
-        advanceTime(timeDiff);
+
+        advanceTime(timeDiff); // Spend timeDiff in Alice's range
+        // Total time spent:
+        // Alice:   1 x timeDiff
+        // Bob:     0
 
         // Perform a large swap to cross ticks into Bob's range
         vm.prank(alice);
@@ -311,8 +313,10 @@ contract LPIncentiveHookTest is Test, Deployers {
         assertNotEq(startingTick, endingTick, "Tick should have changed");
         assertGt(endingTick, tickLowerBob, "Tick should be in Bob's range");
 
-        // Spend timeDiff in Bob's range
-        advanceTime(timeDiff);
+        advanceTime(timeDiff); // Spend timeDiff in Bob's range
+        // Total time spent:
+        // Alice:   1 x timeDiff
+        // Bob:     1 x timeDiff
 
         // Remove liquidity
         removeLiquidity(alice, liquidity, tickLowerAlice, tickUpperAlice);
@@ -327,7 +331,7 @@ contract LPIncentiveHookTest is Test, Deployers {
         // - in Alice's range for timeDiff
         // - in Bob's range for timeDiff
         // Bob has twice the liquidity of Alice, so he should have twice the rewards.
-        assertEq(bobRewards, aliceRewards * 2);
+        assertEq(bobRewards, aliceRewards * 2, "Bob should have twice the rewards of Alice");
 
         // Both should have non-zero rewards
         assertGt(aliceRewards, 0, "Alice should have rewards");
@@ -372,10 +376,15 @@ contract LPIncentiveHookTest is Test, Deployers {
         addLiquidity(bob, liquidity * 2, tickLowerBob, tickUpperBob); // Bob adds twice the liquidity of Alice
 
         (, int24 startingTick,,) = manager.getSlot0(key.toId());
+        assertGt(startingTick, tickLowerAlice, "Initial tick should be in Alice's range. Above her lower tick");
+        assertLt(startingTick, tickUpperAlice, "Initial tick should be in Alice's range. Below her upper tick");
+
         uint256 timeDiff = 1000;
 
-        // Spend 75% of time in Alice's range
-        advanceTime(timeDiff * 3 / 4);
+        advanceTime(timeDiff * 3 / 4); // Spend 75% of time in Alice's range
+        // Total time spent:
+        // Alice:   3/4 x timeDiff
+        // Bob:     0
 
         // Perform swap to cross into Bob's range
         vm.prank(alice);
@@ -393,8 +402,10 @@ contract LPIncentiveHookTest is Test, Deployers {
         assertNotEq(startingTick, endingTick, "Tick should have changed");
         assertGt(endingTick, tickLowerBob, "Tick should be in Bob's range");
 
-        // Spend remaining 25% of time in Bob's range
-        advanceTime(timeDiff * 1 / 4);
+        advanceTime(timeDiff * 1 / 4); // Spend remaining 25% of time in Bob's range
+        // Total time spent:
+        // Alice:   3/4 x timeDiff
+        // Bob:     1/4 x timeDiff
 
         removeLiquidity(alice, liquidity, tickLowerAlice, tickUpperAlice);
         removeLiquidity(bob, liquidity * 2, tickLowerBob, tickUpperBob);
@@ -406,9 +417,14 @@ contract LPIncentiveHookTest is Test, Deployers {
         // Bob should have approximately twice the rewards as Alice for the same time period
         // Since time is split 75/25, and Bob has 2x liquidity:
         // Alice's effective share: 0.75 * 1x = 0.75
-        // Bob's effective share: 0.25 * 2x = 0.5
+        // Bob's effective share:   0.25 * 2x = 0.5
         // Bob's rewards should be about 2/3 of Alice's rewards
-        assertApproxEqRel(bobRewards * 3, aliceRewards * 2, 0.01e18); // 1% tolerance
+        assertApproxEqRel(
+            bobRewards * 3,
+            aliceRewards * 2,
+            0.01e18,
+            "Bob should have approximately twice the rewards of Alice for the same time period"
+        ); // 1% tolerance
 
         // Both should have non-zero rewards
         assertGt(aliceRewards, 0, "Alice should have rewards");
@@ -478,15 +494,18 @@ contract LPIncentiveHookTest is Test, Deployers {
 
         // Get initial tick
         (, int24 currentTick,,) = manager.getSlot0(key.toId());
-        assertGt(currentTick, tickLowerAlice, "Initial tick should be in Alice's range");
-        assertLt(currentTick, tickUpperAlice, "Initial tick should be in Alice's range");
+        assertGt(currentTick, tickLowerAlice, "Initial tick should be in Alice's range. Above her lower tick");
+        assertLt(currentTick, tickUpperAlice, "Initial tick should be in Alice's range. Below her upper tick");
 
         uint256 timePerRange = 1000;
 
-        // Wait in Alice's range
-        advanceTime(timePerRange);
+        advanceTime(timePerRange); // Wait in Alice's range
+        // Total time spent:
+        // Alice:   1 x timePerRange
+        // Bob:     0
+        // Charlie: 0
 
-        // Move to Bob's range
+        // Move up, to Bob's range
         vm.prank(alice);
         swapRouter.swap{gas: 10000000}(
             key,
@@ -497,13 +516,16 @@ contract LPIncentiveHookTest is Test, Deployers {
 
         // Verify we're in Bob's range
         (, currentTick,,) = manager.getSlot0(key.toId());
-        assertGt(currentTick, tickLowerBob, "Tick should be in Bob's range");
-        assertLt(currentTick, tickUpperBob, "Tick should be in Bob's range");
+        assertGt(currentTick, tickLowerBob, "Tick should be in Bob's range. Above his lower tick");
+        assertLt(currentTick, tickUpperBob, "Tick should be in Bob's range. Below his upper tick");
 
-        // Wait in Bob's range
-        advanceTime(timePerRange);
+        advanceTime(timePerRange); // Wait in Bob's range
+        // Total time spent:
+        // Alice:   1 x timePerRange
+        // Bob:     1 x timePerRange
+        // Charlie: 0
 
-        // Move out of Bob's range
+        // Move up, out of Bob's range
         vm.prank(bob);
         swapRouter.swap{gas: 10000000}(
             key,
@@ -514,12 +536,15 @@ contract LPIncentiveHookTest is Test, Deployers {
 
         // Verify we're outside both Alice's and Bob's ranges
         (, currentTick,,) = manager.getSlot0(key.toId());
-        assertGt(currentTick, tickUpperBob, "Tick should be above Alice's and Bob's ranges");
+        assertGt(currentTick, tickUpperBob, "Tick should be above Alice's and Bob's ranges. Above Bob's upper tick");
 
-        // Wait outside of both ranges
-        advanceTime(timePerRange);
+        advanceTime(timePerRange); // Wait outside of both ranges [in Charlie's range]
+        // Total time spent:
+        // Alice:   1 x timePerRange
+        // Bob:     1 x timePerRange
+        // Charlie: 1 x timePerRange
 
-        // Move back to Bob's range
+        // Move down, back to Bob's range
         vm.prank(alice);
         swapRouter.swap{gas: 10000000}(
             key,
@@ -530,25 +555,30 @@ contract LPIncentiveHookTest is Test, Deployers {
 
         // Verify we're back in Bob's range
         (, currentTick,,) = manager.getSlot0(key.toId());
-        assertGt(currentTick, tickLowerBob, "Tick should be back in Bob's range");
-        assertLt(currentTick, tickUpperBob, "Tick should be back in Bob's range");
+        assertGt(currentTick, tickLowerBob, "Tick should be back in Bob's range. Above his lower tick");
+        assertLt(currentTick, tickUpperBob, "Tick should be back in Bob's range. Below his upper tick");
 
-        // Wait outside of both ranges
-        advanceTime(timePerRange);
+        advanceTime(timePerRange); // Wait again in Bob's range
+        // Total time spent:
+        // Alice:   1 x timePerRange
+        // Bob:     2 x timePerRange
+        // Charlie: 1 x timePerRange
 
-        // Remove all liquidity
         removeLiquidity(alice, liquidity, tickLowerAlice, tickUpperAlice);
         removeLiquidity(bob, liquidity, tickLowerBob, tickUpperBob);
 
         // Get accumulated rewards for each user
         uint256 aliceRewards = hook.accumulatedRewards(address(modifyLiquidityRouters[alice]));
         uint256 bobRewards = hook.accumulatedRewards(address(modifyLiquidityRouters[bob]));
+        uint256 charlieRewards = hook.accumulatedRewards(address(modifyLiquidityRouters[charlie]));
+
+        assertEq(bobRewards, aliceRewards * 2, "Bob should have twice the rewards of Alice");
 
         // Verify non-zero rewards
         assertGt(aliceRewards, 0, "Alice should have rewards");
         assertGt(bobRewards, 0, "Bob should have rewards");
 
-        assertEq(aliceRewards * 2, bobRewards);
+        assertEq(charlieRewards, 0, "Charlie should not have rewards because he didn't remove liquidity");
     }
 
     // -----------------------------
