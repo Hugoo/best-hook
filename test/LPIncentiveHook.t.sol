@@ -40,10 +40,6 @@ contract LPIncentiveHookTest is Test, Deployers {
 
     mapping(address => PoolModifyLiquidityTest) modifyLiquidityRouters;
 
-    PoolModifyLiquidityTest modifyLiquidityRouterAlice;
-    PoolModifyLiquidityTest modifyLiquidityRouterBob;
-    PoolModifyLiquidityTest modifyLiquidityRouterCharlie;
-
     function setUp() public {
         deployFreshManagerAndRouters();
 
@@ -66,13 +62,9 @@ contract LPIncentiveHookTest is Test, Deployers {
         deal(Currency.unwrap(rewardToken), address(hook), 1000000 ether);
 
         // we deploy one modifyLiquidityRouter for each user
-        modifyLiquidityRouterAlice = new PoolModifyLiquidityTest(manager);
-        modifyLiquidityRouterBob = new PoolModifyLiquidityTest(manager);
-        modifyLiquidityRouterCharlie = new PoolModifyLiquidityTest(manager);
-
-        modifyLiquidityRouters[alice] = modifyLiquidityRouterAlice;
-        modifyLiquidityRouters[bob] = modifyLiquidityRouterBob;
-        modifyLiquidityRouters[charlie] = modifyLiquidityRouterCharlie;
+        modifyLiquidityRouters[alice] = new PoolModifyLiquidityTest(manager);
+        modifyLiquidityRouters[bob] = new PoolModifyLiquidityTest(manager);
+        modifyLiquidityRouters[charlie] = new PoolModifyLiquidityTest(manager);
     }
 
     function test_ProportionalRewardsToTime() public {
@@ -84,13 +76,13 @@ contract LPIncentiveHookTest is Test, Deployers {
 
         // Approve tokens for router
         vm.startPrank(alice);
-        IERC20(Currency.unwrap(token0)).approve(address(modifyLiquidityRouterAlice), type(uint256).max);
-        IERC20(Currency.unwrap(token1)).approve(address(modifyLiquidityRouterAlice), type(uint256).max);
+        IERC20(Currency.unwrap(token0)).approve(address(modifyLiquidityRouters[alice]), type(uint256).max);
+        IERC20(Currency.unwrap(token1)).approve(address(modifyLiquidityRouters[alice]), type(uint256).max);
         vm.stopPrank();
 
         vm.startPrank(bob);
-        IERC20(Currency.unwrap(token0)).approve(address(modifyLiquidityRouterBob), type(uint256).max);
-        IERC20(Currency.unwrap(token1)).approve(address(modifyLiquidityRouterBob), type(uint256).max);
+        IERC20(Currency.unwrap(token0)).approve(address(modifyLiquidityRouters[bob]), type(uint256).max);
+        IERC20(Currency.unwrap(token1)).approve(address(modifyLiquidityRouters[bob]), type(uint256).max);
         vm.stopPrank();
 
         // Create identical liquidity positions
@@ -117,8 +109,8 @@ contract LPIncentiveHookTest is Test, Deployers {
         removeLiquidity(bob, liquidity, tickLower, tickUpper);
 
         // Get accumulated rewards
-        uint256 aliceRewards = hook.accumulatedRewards(address(modifyLiquidityRouterAlice));
-        uint256 bobRewards = hook.accumulatedRewards(address(modifyLiquidityRouterBob));
+        uint256 aliceRewards = hook.accumulatedRewards(address(modifyLiquidityRouters[alice]));
+        uint256 bobRewards = hook.accumulatedRewards(address(modifyLiquidityRouters[bob]));
 
         // Bob should have approximately twice the rewards as Alice since he stayed twice as long
         assertEq(bobRewards, aliceRewards * 2); // 1% tolerance
@@ -137,13 +129,13 @@ contract LPIncentiveHookTest is Test, Deployers {
 
         // Approve tokens for router
         vm.startPrank(alice);
-        IERC20(Currency.unwrap(token0)).approve(address(modifyLiquidityRouterAlice), type(uint256).max);
-        IERC20(Currency.unwrap(token1)).approve(address(modifyLiquidityRouterAlice), type(uint256).max);
+        IERC20(Currency.unwrap(token0)).approve(address(modifyLiquidityRouters[alice]), type(uint256).max);
+        IERC20(Currency.unwrap(token1)).approve(address(modifyLiquidityRouters[alice]), type(uint256).max);
         vm.stopPrank();
 
         vm.startPrank(bob);
-        IERC20(Currency.unwrap(token0)).approve(address(modifyLiquidityRouterBob), type(uint256).max);
-        IERC20(Currency.unwrap(token1)).approve(address(modifyLiquidityRouterBob), type(uint256).max);
+        IERC20(Currency.unwrap(token0)).approve(address(modifyLiquidityRouters[bob]), type(uint256).max);
+        IERC20(Currency.unwrap(token1)).approve(address(modifyLiquidityRouters[bob]), type(uint256).max);
         vm.stopPrank();
 
         // Create test params for liquidity positions with ticks that are multiples of 60
@@ -172,8 +164,8 @@ contract LPIncentiveHookTest is Test, Deployers {
             "Alice's secondsPerLiquidityOutsideUpper should be greater than 0"
         );
         // Get accumulated rewards
-        uint256 aliceRewards = hook.accumulatedRewards(address(modifyLiquidityRouterAlice));
-        uint256 bobRewards = hook.accumulatedRewards(address(modifyLiquidityRouterBob));
+        uint256 aliceRewards = hook.accumulatedRewards(address(modifyLiquidityRouters[alice]));
+        uint256 bobRewards = hook.accumulatedRewards(address(modifyLiquidityRouters[bob]));
 
         // Bob should have approximately twice the rewards as Alice
         assertEq(bobRewards, aliceRewards * 2);
@@ -236,8 +228,8 @@ contract LPIncentiveHookTest is Test, Deployers {
 
         // Approve tokens for router
         vm.startPrank(alice);
-        IERC20(Currency.unwrap(token0)).approve(address(modifyLiquidityRouterAlice), type(uint256).max);
-        IERC20(Currency.unwrap(token1)).approve(address(modifyLiquidityRouterAlice), type(uint256).max);
+        IERC20(Currency.unwrap(token0)).approve(address(modifyLiquidityRouters[alice]), type(uint256).max);
+        IERC20(Currency.unwrap(token1)).approve(address(modifyLiquidityRouters[alice]), type(uint256).max);
         vm.stopPrank();
 
         // Create liquidity position far above current price
@@ -253,7 +245,7 @@ contract LPIncentiveHookTest is Test, Deployers {
         removeLiquidity(alice, liquidity, tickLower, tickUpper);
 
         // Check rewards - should be zero since position was never in range
-        uint256 aliceRewards = hook.accumulatedRewards(address(modifyLiquidityRouterAlice));
+        uint256 aliceRewards = hook.accumulatedRewards(address(modifyLiquidityRouters[alice]));
         assertEq(aliceRewards, 0, "Out of range position should not earn rewards");
     }
 
@@ -273,15 +265,15 @@ contract LPIncentiveHookTest is Test, Deployers {
 
         // Approve tokens for router
         vm.startPrank(alice);
-        IERC20(Currency.unwrap(token0)).approve(address(modifyLiquidityRouterAlice), type(uint256).max);
-        IERC20(Currency.unwrap(token1)).approve(address(modifyLiquidityRouterAlice), type(uint256).max);
+        IERC20(Currency.unwrap(token0)).approve(address(modifyLiquidityRouters[alice]), type(uint256).max);
+        IERC20(Currency.unwrap(token1)).approve(address(modifyLiquidityRouters[alice]), type(uint256).max);
         IERC20(Currency.unwrap(token0)).approve(address(swapRouter), type(uint256).max);
         IERC20(Currency.unwrap(token1)).approve(address(swapRouter), type(uint256).max);
         vm.stopPrank();
 
         vm.startPrank(bob);
-        IERC20(Currency.unwrap(token0)).approve(address(modifyLiquidityRouterBob), type(uint256).max);
-        IERC20(Currency.unwrap(token1)).approve(address(modifyLiquidityRouterBob), type(uint256).max);
+        IERC20(Currency.unwrap(token0)).approve(address(modifyLiquidityRouters[bob]), type(uint256).max);
+        IERC20(Currency.unwrap(token1)).approve(address(modifyLiquidityRouters[bob]), type(uint256).max);
         vm.stopPrank();
 
         // Create test params for liquidity positions with ticks that are multiples of 60
@@ -329,8 +321,8 @@ contract LPIncentiveHookTest is Test, Deployers {
         removeLiquidity(bob, liquidity * 2, tickLowerBob, tickUpperBob);
 
         // Get accumulated rewards
-        uint256 aliceRewards = hook.accumulatedRewards(address(modifyLiquidityRouterAlice));
-        uint256 bobRewards = hook.accumulatedRewards(address(modifyLiquidityRouterBob));
+        uint256 aliceRewards = hook.accumulatedRewards(address(modifyLiquidityRouters[alice]));
+        uint256 bobRewards = hook.accumulatedRewards(address(modifyLiquidityRouters[bob]));
 
         // Bob should have approximately twice the rewards as Alice.
         // Tick was:
@@ -360,15 +352,15 @@ contract LPIncentiveHookTest is Test, Deployers {
 
         // Approve tokens for router
         vm.startPrank(alice);
-        IERC20(Currency.unwrap(token0)).approve(address(modifyLiquidityRouterAlice), type(uint256).max);
-        IERC20(Currency.unwrap(token1)).approve(address(modifyLiquidityRouterAlice), type(uint256).max);
+        IERC20(Currency.unwrap(token0)).approve(address(modifyLiquidityRouters[alice]), type(uint256).max);
+        IERC20(Currency.unwrap(token1)).approve(address(modifyLiquidityRouters[alice]), type(uint256).max);
         IERC20(Currency.unwrap(token0)).approve(address(swapRouter), type(uint256).max);
         IERC20(Currency.unwrap(token1)).approve(address(swapRouter), type(uint256).max);
         vm.stopPrank();
 
         vm.startPrank(bob);
-        IERC20(Currency.unwrap(token0)).approve(address(modifyLiquidityRouterBob), type(uint256).max);
-        IERC20(Currency.unwrap(token1)).approve(address(modifyLiquidityRouterBob), type(uint256).max);
+        IERC20(Currency.unwrap(token0)).approve(address(modifyLiquidityRouters[bob]), type(uint256).max);
+        IERC20(Currency.unwrap(token1)).approve(address(modifyLiquidityRouters[bob]), type(uint256).max);
         vm.stopPrank();
 
         int24 tickLowerAlice = -120;
@@ -410,8 +402,8 @@ contract LPIncentiveHookTest is Test, Deployers {
         removeLiquidity(bob, liquidity * 2, tickLowerBob, tickUpperBob);
 
         // Get accumulated rewards
-        uint256 aliceRewards = hook.accumulatedRewards(address(modifyLiquidityRouterAlice));
-        uint256 bobRewards = hook.accumulatedRewards(address(modifyLiquidityRouterBob));
+        uint256 aliceRewards = hook.accumulatedRewards(address(modifyLiquidityRouters[alice]));
+        uint256 bobRewards = hook.accumulatedRewards(address(modifyLiquidityRouters[bob]));
 
         // Bob should have approximately twice the rewards as Alice for the same time period
         // Since time is split 75/25, and Bob has 2x liquidity:
@@ -436,22 +428,22 @@ contract LPIncentiveHookTest is Test, Deployers {
 
         // Approve tokens for routers and swap router
         vm.startPrank(alice);
-        IERC20(Currency.unwrap(token0)).approve(address(modifyLiquidityRouterAlice), type(uint256).max);
-        IERC20(Currency.unwrap(token1)).approve(address(modifyLiquidityRouterAlice), type(uint256).max);
+        IERC20(Currency.unwrap(token0)).approve(address(modifyLiquidityRouters[alice]), type(uint256).max);
+        IERC20(Currency.unwrap(token1)).approve(address(modifyLiquidityRouters[alice]), type(uint256).max);
         IERC20(Currency.unwrap(token0)).approve(address(swapRouter), type(uint256).max);
         IERC20(Currency.unwrap(token1)).approve(address(swapRouter), type(uint256).max);
         vm.stopPrank();
 
         vm.startPrank(bob);
-        IERC20(Currency.unwrap(token0)).approve(address(modifyLiquidityRouterBob), type(uint256).max);
-        IERC20(Currency.unwrap(token1)).approve(address(modifyLiquidityRouterBob), type(uint256).max);
+        IERC20(Currency.unwrap(token0)).approve(address(modifyLiquidityRouters[bob]), type(uint256).max);
+        IERC20(Currency.unwrap(token1)).approve(address(modifyLiquidityRouters[bob]), type(uint256).max);
         IERC20(Currency.unwrap(token0)).approve(address(swapRouter), type(uint256).max);
         IERC20(Currency.unwrap(token1)).approve(address(swapRouter), type(uint256).max);
         vm.stopPrank();
 
         vm.startPrank(charlie);
-        IERC20(Currency.unwrap(token0)).approve(address(modifyLiquidityRouterCharlie), type(uint256).max);
-        IERC20(Currency.unwrap(token1)).approve(address(modifyLiquidityRouterCharlie), type(uint256).max);
+        IERC20(Currency.unwrap(token0)).approve(address(modifyLiquidityRouters[charlie]), type(uint256).max);
+        IERC20(Currency.unwrap(token1)).approve(address(modifyLiquidityRouters[charlie]), type(uint256).max);
         vm.stopPrank();
 
         // charlie adds liquidity for a whole range
@@ -536,8 +528,8 @@ contract LPIncentiveHookTest is Test, Deployers {
         removeLiquidity(bob, liquidity, tickLowerBob, tickUpperBob);
 
         // Get accumulated rewards for each user
-        uint256 aliceRewards = hook.accumulatedRewards(address(modifyLiquidityRouterAlice));
-        uint256 bobRewards = hook.accumulatedRewards(address(modifyLiquidityRouterBob));
+        uint256 aliceRewards = hook.accumulatedRewards(address(modifyLiquidityRouters[alice]));
+        uint256 bobRewards = hook.accumulatedRewards(address(modifyLiquidityRouters[bob]));
 
         // Verify non-zero rewards
         assertGt(aliceRewards, 0, "Alice should have rewards");
