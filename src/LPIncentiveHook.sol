@@ -1,18 +1,20 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.26;
 
+import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+
 import {BaseHook} from "v4-periphery/src/utils/BaseHook.sol";
+
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
+
 import {Hooks} from "v4-core/libraries/Hooks.sol";
+import {Position} from "v4-core/libraries/Position.sol";
+import {StateLibrary} from "v4-core/libraries/StateLibrary.sol";
+
 import {PoolId, PoolIdLibrary} from "v4-core/types/PoolId.sol";
 import {PoolKey} from "v4-core/types/PoolKey.sol";
-import {Position} from "v4-core/libraries/Position.sol";
 import {BalanceDelta} from "v4-core/types/BalanceDelta.sol";
-import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {BeforeSwapDelta} from "v4-core/types/BeforeSwapDelta.sol";
-import {Hooks} from "v4-core/libraries/Hooks.sol";
-import {StateLibrary} from "v4-core/libraries/StateLibrary.sol";
-import {console} from "forge-std/console.sol";
 
 contract LPIncentiveHook is BaseHook {
     using PoolIdLibrary for PoolKey;
