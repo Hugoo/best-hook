@@ -175,9 +175,9 @@ contract LPIncentiveHookTest is Test, Deployers {
         });
 
         IPoolManager.ModifyLiquidityParams memory bobParams = IPoolManager.ModifyLiquidityParams({
-            tickLower: -120,
-            tickUpper: 120,
-            liquidityDelta: 2000e18, // Bob adds twice the liquidity
+            tickLower: aliceParams.tickLower,
+            tickUpper: aliceParams.tickUpper,
+            liquidityDelta: aliceParams.liquidityDelta * 2, // Bob adds twice the liquidity
             salt: bytes32(0)
         });
 
@@ -333,6 +333,13 @@ contract LPIncentiveHookTest is Test, Deployers {
     }
 
     function test_CloseLiquidityTickHalveTimeInAliceRange() public {
+        //  Liquidity Distribution
+        //          price
+        //  -120 ---- 0 ---- 60 --------  240
+        //
+        //     ---------------                   <- Alice (1x liquidity)
+        //                    ===============    <- Bob   (2x liquidity)
+
         // Deal tokens to users
         deal(Currency.unwrap(token0), alice, 100000 ether);
         deal(Currency.unwrap(token1), alice, 100000 ether);
@@ -363,7 +370,7 @@ contract LPIncentiveHookTest is Test, Deployers {
         IPoolManager.ModifyLiquidityParams memory bobParams = IPoolManager.ModifyLiquidityParams({
             tickLower: 60,
             tickUpper: 240,
-            liquidityDelta: 2000e18, // Bob adds twice the liquidity
+            liquidityDelta: aliceParams.liquidityDelta * 2, // Bob adds twice the liquidity of Alice
             salt: bytes32(0)
         });
 
@@ -377,6 +384,7 @@ contract LPIncentiveHookTest is Test, Deployers {
 
         (, int24 startingTick,,) = manager.getSlot0(key.toId());
 
+        // Spend timeDiff in Alice's range
         uint256 timeDiff = 1000;
         advanceTime(timeDiff);
 
@@ -398,8 +406,9 @@ contract LPIncentiveHookTest is Test, Deployers {
 
         // Verify tick was crossed
         assertNotEq(startingTick, endingTick, "Tick should have changed");
-        assertGt(endingTick, 60, "Tick not in bobs range");
+        assertGt(endingTick, bobParams.tickLower, "Tick should be in Bob's range");
 
+        // Spend timeDiff in Bob's range
         advanceTime(timeDiff);
 
         // Remove liquidity
@@ -431,7 +440,11 @@ contract LPIncentiveHookTest is Test, Deployers {
         uint256 aliceRewards = hook.accumulatedRewards(address(modifyLiquidityRouterAlice));
         uint256 bobRewards = hook.accumulatedRewards(address(modifyLiquidityRouterBob));
 
-        // Bob should have approximately twice the rewards as Alice
+        // Bob should have approximately twice the rewards as Alice.
+        // Tick was:
+        // - in Alice's range for timeDiff
+        // - in Bob's range for timeDiff
+        // Bob has twice the liquidity of Alice, so he should have twice the rewards.
         assertEq(bobRewards, aliceRewards * 2);
 
         // Both should have non-zero rewards
@@ -440,6 +453,13 @@ contract LPIncentiveHookTest is Test, Deployers {
     }
 
     function test_CloseLiquidityTickThreeQuartersTimeInAliceRange() public {
+        //  Liquidity Distribution
+        //          price
+        //  -120 ---- 0 ---- 60 --------  240
+        //
+        //     ---------------                   <- Alice (1x liquidity)
+        //                    ===============    <- Bob   (2x liquidity)
+
         // Deal tokens to users
         deal(Currency.unwrap(token0), alice, 100000 ether);
         deal(Currency.unwrap(token1), alice, 100000 ether);
@@ -470,7 +490,7 @@ contract LPIncentiveHookTest is Test, Deployers {
         IPoolManager.ModifyLiquidityParams memory bobParams = IPoolManager.ModifyLiquidityParams({
             tickLower: 60,
             tickUpper: 240,
-            liquidityDelta: 2000e18, // Bob adds twice the liquidity
+            liquidityDelta: aliceParams.liquidityDelta * 2, // Bob adds twice the liquidity of Alice
             salt: bytes32(0)
         });
 
@@ -501,7 +521,7 @@ contract LPIncentiveHookTest is Test, Deployers {
 
         // Verify tick was crossed
         assertNotEq(startingTick, endingTick, "Tick should have changed");
-        assertGt(endingTick, 60, "Tick not in bobs range");
+        assertGt(endingTick, bobParams.tickLower, "Tick should be in Bob's range");
 
         // Spend remaining 25% of time in Bob's range
         advanceTime(timeDiff * 1 / 4);
