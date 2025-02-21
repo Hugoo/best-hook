@@ -98,7 +98,7 @@ contract LPIncentiveHookTest is Test, Deployers {
 
         // Alice keeps position for 1000 seconds
         uint256 timeDiff = 1000;
-        vm.warp(block.timestamp + timeDiff);
+        advanceTime(timeDiff);
 
         // Alice removes liquidity
         vm.startPrank(alice);
@@ -120,7 +120,7 @@ contract LPIncentiveHookTest is Test, Deployers {
         vm.stopPrank();
 
         // keeping it 2x in the contract
-        vm.warp(block.timestamp + timeDiff * 2);
+        advanceTime(timeDiff * 2);
 
         // Bob removes liquidity
         vm.startPrank(bob);
@@ -191,8 +191,7 @@ contract LPIncentiveHookTest is Test, Deployers {
         modifyLiquidityRouterBob.modifyLiquidity(key, bobParams, ZERO_BYTES);
         vm.stopPrank();
 
-        // Simulate time passing (1000 seconds)
-        vm.warp(block.timestamp + 1000);
+        advanceTime(1000);
 
         // Remove liquidity
         vm.startPrank(alice);
@@ -318,8 +317,7 @@ contract LPIncentiveHookTest is Test, Deployers {
         modifyLiquidityRouterAlice.modifyLiquidity(key, params, ZERO_BYTES);
         vm.stopPrank();
 
-        // Simulate time passing (1000 seconds)
-        vm.warp(block.timestamp + 1000);
+        advanceTime(1000);
 
         // Remove liquidity
         vm.startPrank(alice);
@@ -385,9 +383,9 @@ contract LPIncentiveHookTest is Test, Deployers {
         modifyLiquidityRouterBob.modifyLiquidity(key, bobParams, ZERO_BYTES);
         vm.stopPrank();
         (, int24 startingTick,,) = manager.getSlot0(key.toId());
+
         uint256 timeDiff = 1000;
-        // Simulate time passing (1000 seconds)
-        vm.warp(block.timestamp + timeDiff);
+        advanceTime(timeDiff);
 
         // Perform a large swap to cross ticks into Bob's range
         vm.startPrank(alice);
@@ -410,7 +408,7 @@ contract LPIncentiveHookTest is Test, Deployers {
         assertNotEq(startingTick, endingTick, "Tick should have changed");
         assertGt(endingTick, 60, "Tick not in bobs range");
 
-        vm.warp(block.timestamp + timeDiff);
+        advanceTime(timeDiff);
 
         // Remove liquidity
         vm.startPrank(alice);
@@ -498,7 +496,7 @@ contract LPIncentiveHookTest is Test, Deployers {
         uint256 timeDiff = 1000;
 
         // Spend 75% of time in Alice's range
-        vm.warp(block.timestamp + (timeDiff * 3 / 4));
+        advanceTime(timeDiff * 3 / 4);
 
         // Perform swap to cross into Bob's range
         vm.startPrank(alice);
@@ -518,7 +516,7 @@ contract LPIncentiveHookTest is Test, Deployers {
         assertGt(endingTick, 60, "Tick not in bobs range");
 
         // Spend remaining 25% of time in Bob's range
-        vm.warp(block.timestamp + (timeDiff * 1 / 4));
+        advanceTime(timeDiff * 1 / 4);
 
         // Remove liquidity for both users
         vm.startPrank(alice);
@@ -635,7 +633,7 @@ contract LPIncentiveHookTest is Test, Deployers {
         uint256 timePerRange = 1000;
 
         // Wait in Alice's range
-        vm.warp(block.timestamp + timePerRange);
+        advanceTime(timePerRange);
 
         // Move to Bob's range
         vm.startPrank(alice);
@@ -653,7 +651,7 @@ contract LPIncentiveHookTest is Test, Deployers {
         assertLt(currentTick, bobParams.tickUpper, "Tick should be in Bob's range");
 
         // Wait in Bob's range
-        vm.warp(block.timestamp + timePerRange);
+        advanceTime(timePerRange);
 
         // Move out of Bob's range
         vm.startPrank(bob);
@@ -670,7 +668,7 @@ contract LPIncentiveHookTest is Test, Deployers {
         assertGt(currentTick, bobParams.tickUpper, "Tick should be above both ranges");
 
         // Wait outside of both ranges
-        vm.warp(block.timestamp + timePerRange);
+        advanceTime(timePerRange);
 
         // Move back to Bob's range
         vm.startPrank(alice);
@@ -688,7 +686,8 @@ contract LPIncentiveHookTest is Test, Deployers {
         assertLt(currentTick, bobParams.tickUpper, "Tick should be back in Bob's range");
 
         // Wait outside of both ranges
-        vm.warp(block.timestamp + timePerRange);
+        advanceTime(timePerRange);
+
         // Remove all liquidity
         vm.startPrank(alice);
         modifyLiquidityRouterAlice.modifyLiquidity(
@@ -725,5 +724,11 @@ contract LPIncentiveHookTest is Test, Deployers {
         assertGt(bobRewards, 0, "Bob should have rewards");
 
         assertEq(aliceRewards * 2, bobRewards);
+    }
+
+    // internal helper functions
+
+    function advanceTime(uint256 seconds_) internal {
+        vm.warp(block.timestamp + seconds_);
     }
 }
