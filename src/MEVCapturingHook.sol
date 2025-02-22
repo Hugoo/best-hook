@@ -52,18 +52,13 @@ contract MEVCapturingHook is BaseHook {
         });
     }
 
-    function _beforeInitialize(
-        address,
-        PoolKey calldata key,
-        uint160
-    ) internal override returns (bytes4) {
+    function _beforeInitialize(address, PoolKey calldata key, uint160) internal override returns (bytes4) {
         if (!key.fee.isDynamicFee()) revert MustUseDynamicFee();
 
         poolConfig[key.toId()] = PoolConfig(DEFAULT_FEE_UNIT, DEFAULT_PRIORITY_THRESHOLD);
 
         return this.beforeInitialize.selector;
     }
-
 
     function _beforeSwap(address, PoolKey calldata key, IPoolManager.SwapParams calldata params, bytes calldata)
         internal
