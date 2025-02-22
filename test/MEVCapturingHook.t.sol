@@ -50,7 +50,7 @@ contract MEVCapturingHookTest is Test, Deployers {
         uint160 flags = uint160(Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG);
         address hookAddress = address(flags);
 
-        deployCodeTo("MEVCapturingHook.sol", abi.encode(manager), hookAddress);
+        deployCodeTo("MEVCapturingHook.sol", abi.encode(manager, address(this)), hookAddress);
         hook = MEVCapturingHook(hookAddress);
 
         // Init Pool

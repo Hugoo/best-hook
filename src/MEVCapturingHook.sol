@@ -3,6 +3,8 @@ pragma solidity ^0.8.26;
 
 import {BaseHook} from "v4-periphery/src/utils/BaseHook.sol";
 
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+
 import {CurrencyLibrary, Currency} from "v4-core/types/Currency.sol";
 import {PoolKey} from "v4-core/types/PoolKey.sol";
 import {PoolId, PoolIdLibrary} from "v4-core/types/PoolId.sol";
@@ -18,7 +20,7 @@ struct PoolConfig {
     uint256 priorityThreshold;
 }
 
-contract MEVCapturingHook is BaseHook {
+contract MEVCapturingHook is BaseHook, Ownable {
     using LPFeeLibrary for uint24;
     using PoolIdLibrary for PoolKey;
 
@@ -31,7 +33,7 @@ contract MEVCapturingHook is BaseHook {
     mapping(PoolId => uint256) lastTradedBlock;
 
     // Initialize BaseHook and ERC20
-    constructor(IPoolManager _manager) BaseHook(_manager) {}
+    constructor(IPoolManager _manager, address _initialOwner) BaseHook(_manager) Ownable(_initialOwner) {}
 
     function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
         return Hooks.Permissions({
