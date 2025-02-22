@@ -91,4 +91,8 @@ contract MEVCapturingHook is BaseHook, Ownable {
     function _getPriorityFee() internal view returns (uint256) {
         return tx.gasprice - block.basefee;
     }
+
+    function setConfig(PoolId pool, PoolConfig memory config) public onlyOwner {
+        poolConfig[pool] = config;
+    }
 }
