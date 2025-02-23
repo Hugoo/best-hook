@@ -77,7 +77,11 @@ contract MEVCapturingHook is BaseHook, Ownable {
 
         // take a fee based on the priority fee and donate it to LP
         lastTradedBlock[poolId] = block.number;
-        uint256 fee = (priorityFee - priorityThreshold) * poolConfig[poolId].feeUnit;
+
+        uint256 fee;
+        unchecked {
+            fee = (priorityFee - priorityThreshold) * poolConfig[poolId].feeUnit;
+        }
 
         if (params.zeroForOne) {
             poolManager.donate(key, fee, 0, "");
@@ -89,7 +93,9 @@ contract MEVCapturingHook is BaseHook, Ownable {
     }
 
     function _getPriorityFee() internal view returns (uint256) {
-        return tx.gasprice - block.basefee;
+        unchecked {
+            return tx.gasprice - block.basefee;
+        }
     }
 
     function setConfig(PoolId pool, PoolConfig memory config) public onlyOwner {
