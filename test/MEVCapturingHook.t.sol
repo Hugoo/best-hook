@@ -103,6 +103,8 @@ contract MEVCapturingHookTest is Test, Deployers {
 
         assertEq(token0.balanceOf(alice.addr), 1 ether);
         assertEq(token1.balanceOf(alice.addr), 0);
+        // we only have one pool so all tokens in the manager are pool liquidity
+        assertEq(token0.balanceOf(address(manager)), 10 ether);
 
         vm.prank(alice.addr);
         MockERC20(Currency.unwrap(token0)).approve(address(swapRouter), 1 ether);
@@ -123,6 +125,8 @@ contract MEVCapturingHookTest is Test, Deployers {
             ""
         );
 
+        // entire order was donated to the to the pool
+        assertEq(token0.balanceOf(address(manager)), 11 ether);
         assertEq(token0.balanceOf(alice.addr), 0 ether);
         assertEq(token1.balanceOf(alice.addr), 0 ether);
     }
