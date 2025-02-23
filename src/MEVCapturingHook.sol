@@ -26,8 +26,8 @@ contract MEVCapturingHook is BaseHook, Ownable {
 
     error MustUseDynamicFee();
 
-    uint256 constant DEFAULT_FEE_UNIT = 1 wei; // ?? this is too low
-    uint256 constant DEFAULT_PRIORITY_THRESHOLD = 10 wei; // ?? this is too low
+    uint256 public constant DEFAULT_FEE_UNIT = 1 wei; // ?? this is too low
+    uint256 public constant DEFAULT_PRIORITY_THRESHOLD = 10 wei; // ?? this is too low
 
     mapping(PoolId => PoolConfig) poolConfig;
     mapping(PoolId => uint256) lastTradedBlock;
@@ -37,7 +37,7 @@ contract MEVCapturingHook is BaseHook, Ownable {
 
     function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
         return Hooks.Permissions({
-            beforeInitialize: false,
+            beforeInitialize: true,
             afterInitialize: false,
             beforeAddLiquidity: false,
             beforeRemoveLiquidity: false,

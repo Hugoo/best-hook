@@ -12,6 +12,7 @@ import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 import {PoolManager} from "v4-core/PoolManager.sol";
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 
+import {LPFeeLibrary} from "v4-core/libraries/LPFeeLibrary.sol";
 import {PoolId, PoolIdLibrary} from "v4-core/types/PoolId.sol";
 import {Currency, CurrencyLibrary} from "v4-core/types/Currency.sol";
 import {StateLibrary} from "v4-core/libraries/StateLibrary.sol";
@@ -47,14 +48,15 @@ contract MEVCapturingHookTest is Test, Deployers {
         bob = vm.createWallet("bob");
 
         // Deploy our hook
-        uint160 flags = uint160(Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG);
+        uint160 flags =
+            uint160(Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG);
         address hookAddress = address(flags);
 
         deployCodeTo("MEVCapturingHook.sol", abi.encode(manager, address(this)), hookAddress);
         hook = MEVCapturingHook(hookAddress);
 
         // Init Pool
-        (key,) = initPool(token0, token1, hook, 3000, SQRT_PRICE_1_1);
+        (key,) = initPool(token0, token1, hook, LPFeeLibrary.DYNAMIC_FEE_FLAG, SQRT_PRICE_1_1);
 
         modifyLiquidityRouter.modifyLiquidity(
             key,
@@ -68,17 +70,17 @@ contract MEVCapturingHookTest is Test, Deployers {
         );
     }
 
-    function test_prioritySwap() public {
-        deal(Currency.unwrap(token0), alice.addr, 2 ether);
+    function test_lowPrioritySwap() public {
+        deal(Currency.unwrap(token0), alice.addr, 1 ether);
 
-        console.log("\nbefore");
-        console.log(token0.balanceOf(alice.addr));
-        console.log(token1.balanceOf(alice.addr));
+        assertEq(token0.balanceOf(alice.addr), 1 ether);
+        assertEq(token1.balanceOf(alice.addr), 0);
 
         vm.prank(alice.addr);
-        MockERC20(Currency.unwrap(token0)).approve(address(swapRouter), 2 ether);
+        MockERC20(Currency.unwrap(token0)).approve(address(swapRouter), 1 ether);
 
-        vm.txGasPrice(100_000);
+        vm.txGasPrice(hook.DEFAULT_PRIORITY_THRESHOLD() - 1);
+        vm.fee(0);
 
         vm.prank(alice.addr);
         swapRouter.swap(
@@ -92,10 +94,36 @@ contract MEVCapturingHookTest is Test, Deployers {
             ""
         );
 
-        console.log("\nafter");
-        console.log(token0.balanceOf(alice.addr));
-        console.log(token1.balanceOf(alice.addr));
+        assertEq(token0.balanceOf(alice.addr), 0 ether);
+        assertApproxEqAbs(token1.balanceOf(alice.addr), 1 ether, 0.1 ether);
+    }
 
-        // TODO: assert :))
+    function test_highPrioritySwap() public {
+        deal(Currency.unwrap(token0), alice.addr, 1 ether);
+
+        assertEq(token0.balanceOf(alice.addr), 1 ether);
+        assertEq(token1.balanceOf(alice.addr), 0);
+
+        vm.prank(alice.addr);
+        MockERC20(Currency.unwrap(token0)).approve(address(swapRouter), 1 ether);
+
+        // with the default settings this should equal 100% fee
+        vm.txGasPrice(1 ether);
+        vm.fee(0);
+
+        vm.prank(alice.addr);
+        swapRouter.swap(
+            key,
+            IPoolManager.SwapParams({
+                zeroForOne: true,
+                amountSpecified: -1 ether, // Exact input for output swap
+                sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+            }),
+            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
+            ""
+        );
+
+        assertEq(token0.balanceOf(alice.addr), 0 ether);
+        assertEq(token1.balanceOf(alice.addr), 0 ether);
     }
 }
