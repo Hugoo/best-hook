@@ -70,14 +70,15 @@ contract MEVCapturingHook is BaseHook, Ownable {
         // take a fee based on the priority fee
         // and donate it to LP
 
+        uint256 priorityThreshold = poolConfig[key.toId()].priorityThreshold;
         uint256 priorityFee = _getPriorityFee();
 
-        if (priorityFee < poolConfig[key.toId()].priorityThreshold || block.number == lastTradedBlock[key.toId()]) {
+        if (priorityFee < priorityThreshold || block.number == lastTradedBlock[key.toId()]) {
             return (BaseHook.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
         }
 
         lastTradedBlock[key.toId()] = block.number;
-        uint256 fee = priorityFee * poolConfig[key.toId()].feeUnit;
+        uint256 fee = (priorityFee - priorityThreshold) * poolConfig[key.toId()].feeUnit;
 
         if (params.zeroForOne) {
             poolManager.donate(key, fee, 0, "");

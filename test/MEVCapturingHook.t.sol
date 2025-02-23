@@ -108,7 +108,7 @@ contract MEVCapturingHookTest is Test, Deployers {
         MockERC20(Currency.unwrap(token0)).approve(address(swapRouter), 1 ether);
 
         // with the default settings this should equal 100% fee
-        vm.txGasPrice(1 ether);
+        vm.txGasPrice(1 ether + hook.DEFAULT_PRIORITY_THRESHOLD());
         vm.fee(0);
 
         vm.prank(alice.addr);
