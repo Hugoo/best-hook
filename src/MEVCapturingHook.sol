@@ -70,26 +70,22 @@ contract MEVCapturingHook is BaseHook, Ownable {
         PoolId poolId = key.toId();
         uint256 priorityThreshold = poolConfig[poolId].priorityThreshold;
         uint256 priorityFee = _getPriorityFee();
+        uint24 fee = 3000; // make this configurable per pool
 
-        if (priorityFee < priorityThreshold || block.number == lastTradedBlock[poolId]) {
-            return (BaseHook.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
+        if (priorityFee > priorityThreshold && block.number != lastTradedBlock[poolId]) {
+            // TODO: 
+            // - pick max priority fee
+            // - calculate % of max that is set in tx
+            // - this percentage should be LP fee
+
+            fee = 1_000_000;
+
+            // we only need to update this once per block
+            lastTradedBlock[poolId] = block.number;
         }
 
-        // take a fee based on the priority fee and donate it to LP
-        lastTradedBlock[poolId] = block.number;
-
-        uint256 fee;
-        unchecked {
-            fee = (priorityFee - priorityThreshold) * poolConfig[poolId].feeUnit;
-        }
-
-        if (params.zeroForOne) {
-            poolManager.donate(key, fee, 0, "");
-        } else {
-            poolManager.donate(key, 0, fee, "");
-        }
-
-        return (BaseHook.beforeSwap.selector, toBeforeSwapDelta(int128(int256(fee)), 0), 0);
+        poolManager.updateDynamicLPFee(key, fee);
+        return (BaseHook.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
     }
 
     function _getPriorityFee() internal view returns (uint256) {
