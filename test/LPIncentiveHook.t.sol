@@ -20,7 +20,6 @@ import {Hooks} from "v4-core/libraries/Hooks.sol";
 import {StateLibrary} from "v4-core/libraries/StateLibrary.sol";
 
 import {LPIncentiveHook} from "../src/LPIncentiveHook.sol";
-import {console} from "forge-std/Console.sol";
 
 contract LPIncentiveHookTest is Test, Deployers {
     using PoolIdLibrary for PoolKey;
