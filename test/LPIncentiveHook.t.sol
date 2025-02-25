@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.26;
 
+import {console} from "forge-std/Console.sol";
+
 import {Test} from "forge-std/Test.sol";
 
 import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
@@ -685,6 +687,92 @@ contract LPIncentiveHookTest is Test, Deployers {
         // Both should have non-zero rewards
         assertGt(aliceRewards, 0, "Alice should have rewards");
         assertGt(bobRewards, 0, "Bob should have rewards");
+    }
+
+    function test_MultiplePoolsFromSameUser() public {
+        // Deal tokens to alice
+        deal(Currency.unwrap(token0), alice, 100000 ether);
+        deal(Currency.unwrap(token1), alice, 100000 ether);
+
+        // Approve tokens for router
+        vm.startPrank(alice);
+        IERC20(Currency.unwrap(token0)).approve(address(modifyLiquidityRouters[alice]), type(uint256).max);
+        IERC20(Currency.unwrap(token1)).approve(address(modifyLiquidityRouters[alice]), type(uint256).max);
+        vm.stopPrank();
+
+        // Create a second pool with different fee tier
+        (PoolKey memory key2,) = initPool(token0, token1, hook, 500, SQRT_PRICE_1_1);
+
+        int24 tickLower = -120;
+        int24 tickUpper = 120;
+        uint256 liquidity1 = 1000e18;
+        uint256 liquidity2 = 2000e18;
+
+        // Add liquidity to both pools
+        addLiquidity(alice, liquidity1, tickLower, tickUpper); // First pool (key)
+        
+        vm.prank(alice);
+        modifyLiquidityRouters[alice].modifyLiquidity(
+            key2,
+            IPoolManager.ModifyLiquidityParams({
+                tickLower: tickLower,
+                tickUpper: tickUpper,
+                liquidityDelta: int256(liquidity2),
+                salt: bytes32(0)
+            }),
+            ZERO_BYTES
+        );
+
+        // Wait some time for rewards to accumulate
+        uint256 timeDiff = 1000;
+        advanceTime(timeDiff);
+
+        // Remove liquidity from both pools
+        removeLiquidity(alice, liquidity1, tickLower, tickUpper); // First pool
+        
+        vm.prank(alice);
+        modifyLiquidityRouters[alice].modifyLiquidity(
+            key2,
+            IPoolManager.ModifyLiquidityParams({
+                tickLower: tickLower,
+                tickUpper: tickUpper,
+                liquidityDelta: -int256(liquidity2),
+                salt: bytes32(0)
+            }),
+            ZERO_BYTES
+        );
+
+        // Get accumulated rewards
+        uint256 aliceRewards = hook.accumulatedRewards(address(modifyLiquidityRouters[alice]));
+
+        // Verify rewards are non-zero
+        assertGt(aliceRewards, 0, "Alice should have rewards");
+
+        // Verify secondsPerLiquidity is tracked separately for each pool
+        assertEq(
+            hook.secondsPerLiquidity(key.toId()),
+            (timeDiff * 1e36) / liquidity1,
+            "Incorrect secondsPerLiquidity for pool 1"
+        );
+        assertEq(
+            hook.secondsPerLiquidity(key2.toId()),
+            (timeDiff * 1e36) / liquidity2,
+            "Incorrect secondsPerLiquidity for pool 2"
+        );
+        console.log("aliceRewards", aliceRewards);
+        console.log("liquidity1", liquidity1);
+        console.log("liquidity2", liquidity2);
+        console.log("timeDiff", timeDiff);
+        console.log("hook.secondsPerLiquidity(key.toId())", hook.secondsPerLiquidity(key.toId()));
+        console.log("expected alice Rewards", (liquidity1 + liquidity2) *  hook.secondsPerLiquidity(key.toId()));
+        // Verify rewards are proportional to total liquidity provided across both pools
+        assertApproxEqRel(
+            aliceRewards,
+            (liquidity1 * hook.secondsPerLiquidity(key.toId())) + 
+            (liquidity2 * hook.secondsPerLiquidity(key2.toId())), // Todo: this shoud actually be weighted by the tokens value! 
+            0.01e18,
+            "Total rewards should be proportional to total liquidity"
+        );
     }
 
     // -----------------------------
