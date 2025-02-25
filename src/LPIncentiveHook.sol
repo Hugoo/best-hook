@@ -110,8 +110,8 @@ contract LPIncentiveHook is BaseHook {
         bytes32 positionKey = Position.calculatePositionKey(sender, params.tickLower, params.tickUpper, params.salt);
 
         updateSecondsPerLiquidity(poolId);
-        updatesecondsPerLiquidityOutsideForTick(poolId, params.tickLower, params.tickLower > currentTick);
-        updatesecondsPerLiquidityOutsideForTick(poolId, params.tickUpper, params.tickUpper > currentTick);
+        updatesecondsPerLiquidityOutsideForTick(poolId, params.tickLower, params.tickLower < currentTick);
+        updatesecondsPerLiquidityOutsideForTick(poolId, params.tickUpper, params.tickUpper < currentTick);
         updateUserRewards(sender, poolId, params, positionKey);
 
         return BaseHook.beforeAddLiquidity.selector;
@@ -168,8 +168,6 @@ contract LPIncentiveHook is BaseHook {
     ) internal {
         // Get position liquidity BEFORE the modification
         (uint128 positionLiquidity) = poolManager.getPositionLiquidity(poolId, positionKey);
-
-        // Calculate rewards
         uint256 secondsPerLiquidityInside =
             calculateSecondsPerLiquidityInside(poolId, params.tickLower, params.tickUpper);
         uint256 lastSecondsPerLiquidityInside = secondsPerLiquidityInsideDeposit[poolId][positionKey];
@@ -184,8 +182,7 @@ contract LPIncentiveHook is BaseHook {
                 accumulatedRewards[sender] += rewards;
             }
         }
-
-        // Update the stored secondsPerLiquidityInside for future calculations
+        //  Update the stored secondsPerLiquidityInside for future calculations
         secondsPerLiquidityInsideDeposit[poolId][positionKey] = secondsPerLiquidityInside;
     }
 

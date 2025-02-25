@@ -20,6 +20,7 @@ import {Hooks} from "v4-core/libraries/Hooks.sol";
 import {StateLibrary} from "v4-core/libraries/StateLibrary.sol";
 
 import {LPIncentiveHook} from "../src/LPIncentiveHook.sol";
+import {console} from "forge-std/Console.sol";
 
 contract LPIncentiveHookTest is Test, Deployers {
     using PoolIdLibrary for PoolKey;
@@ -419,12 +420,11 @@ contract LPIncentiveHookTest is Test, Deployers {
         // Alice's effective share: 0.75 * 1x = 0.75
         // Bob's effective share:   0.25 * 2x = 0.5
         // Bob's rewards should be about 2/3 of Alice's rewards
-        assertApproxEqRel(
+        assertEq(
             bobRewards * 3,
             aliceRewards * 2,
-            0.01e18,
             "Bob should have approximately twice the rewards of Alice for the same time period"
-        ); // 1% tolerance
+        );
 
         // Both should have non-zero rewards
         assertGt(aliceRewards, 0, "Alice should have rewards");
@@ -579,6 +579,113 @@ contract LPIncentiveHookTest is Test, Deployers {
         assertGt(bobRewards, 0, "Bob should have rewards");
 
         assertEq(charlieRewards, 0, "Charlie should not have rewards because he didn't remove liquidity");
+    }
+
+    function test_MultiplePositionsFromSameUser() public {
+        // Deal tokens to users (further reduced amounts)
+        deal(Currency.unwrap(token0), alice, 1000 ether);
+        deal(Currency.unwrap(token1), alice, 1000 ether);
+        deal(Currency.unwrap(token0), bob, 1000 ether);
+        deal(Currency.unwrap(token1), bob, 1000 ether);
+
+        // Approve tokens for router
+        vm.startPrank(alice);
+        IERC20(Currency.unwrap(token0)).approve(address(modifyLiquidityRouters[alice]), type(uint256).max);
+        IERC20(Currency.unwrap(token1)).approve(address(modifyLiquidityRouters[alice]), type(uint256).max);
+        vm.stopPrank();
+
+        vm.startPrank(bob);
+        IERC20(Currency.unwrap(token0)).approve(address(modifyLiquidityRouters[bob]), type(uint256).max);
+        IERC20(Currency.unwrap(token1)).approve(address(modifyLiquidityRouters[bob]), type(uint256).max);
+        vm.stopPrank();
+
+        int24 tickLower = -120;
+        int24 tickUpper = 120;
+        uint256 liquidity = 10e16;
+
+        // Initial positions for Alice and Bob
+        addLiquidity(bob, liquidity, tickLower, tickUpper);
+
+        addLiquidity(alice, liquidity, tickLower, tickUpper);
+
+        // Wait some time for rewards to accumulate
+        uint256 timeDiff = 10000;
+        advanceTime(timeDiff);
+
+        // Alice adds second position with same amount
+        addLiquidity(alice, 2 * liquidity, tickLower, tickUpper);
+
+        // Wait more time
+        advanceTime(timeDiff);
+
+        // Remove all positions
+        removeLiquidity(bob, liquidity, tickLower, tickUpper);
+        removeLiquidity(alice, 3 * liquidity, tickLower, tickUpper);
+
+        // Get accumulated rewards
+        uint256 aliceRewards = hook.accumulatedRewards(address(modifyLiquidityRouters[alice]));
+        uint256 bobRewards = hook.accumulatedRewards(address(modifyLiquidityRouters[bob]));
+
+        assertEq(aliceRewards * 3, bobRewards * 5, "Alice should have 5/3 Bob's rewards");
+
+        // Both should have non-zero rewards
+        assertGt(aliceRewards, 0, "Alice should have rewards");
+        assertGt(bobRewards, 0, "Bob should have rewards");
+    }
+
+    function test_MultipleDecreasingPositionsFromSameUser() public {
+        // Deal tokens to users (further reduced amounts)
+        deal(Currency.unwrap(token0), alice, 1000 ether);
+        deal(Currency.unwrap(token1), alice, 1000 ether);
+        deal(Currency.unwrap(token0), bob, 1000 ether);
+        deal(Currency.unwrap(token1), bob, 1000 ether);
+
+        // Approve tokens for router
+        vm.startPrank(alice);
+        IERC20(Currency.unwrap(token0)).approve(address(modifyLiquidityRouters[alice]), type(uint256).max);
+        IERC20(Currency.unwrap(token1)).approve(address(modifyLiquidityRouters[alice]), type(uint256).max);
+        vm.stopPrank();
+
+        vm.startPrank(bob);
+        IERC20(Currency.unwrap(token0)).approve(address(modifyLiquidityRouters[bob]), type(uint256).max);
+        IERC20(Currency.unwrap(token1)).approve(address(modifyLiquidityRouters[bob]), type(uint256).max);
+        vm.stopPrank();
+
+        int24 tickLower = -120;
+        int24 tickUpper = 120;
+        uint256 liquidity = 4 * 9 * 10e2;
+
+        // Initial positions for Alice and Bob
+        addLiquidity(bob, liquidity, tickLower, tickUpper);
+
+        addLiquidity(alice, liquidity, tickLower, tickUpper);
+
+        // Wait some time for rewards to accumulate
+        uint256 timeDiff = 10000;
+        advanceTime(timeDiff);
+
+        // Alice adds second position with same amount
+        removeLiquidity(alice, liquidity * 2 / 3, tickLower, tickUpper);
+
+        // Wait more time
+        advanceTime(timeDiff);
+
+        // Remove all positions
+        removeLiquidity(bob, liquidity, tickLower, tickUpper);
+        removeLiquidity(alice, liquidity / 3, tickLower, tickUpper);
+
+        // Get accumulated rewards
+        uint256 aliceRewards = hook.accumulatedRewards(address(modifyLiquidityRouters[alice]));
+        uint256 bobRewards = hook.accumulatedRewards(address(modifyLiquidityRouters[bob]));
+
+        // we need to use approx, since there are some rounding errors
+        assertApproxEqRel(
+            bobRewards * 3, aliceRewards * 5, 0.01e12, "Bob should have approximately 5/3 the rewards of Alice"
+        );
+
+        // Both should have non-zero rewards
+        assertGt(aliceRewards, 0, "Alice should have rewards");
+        assertGt(bobRewards, 0, "Bob should have rewards");
     }
 
     // -----------------------------
