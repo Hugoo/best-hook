@@ -60,9 +60,13 @@ contract LPIncentiveHook is BaseHook, Ownable {
 
     function setRewardRate(PoolId poolId, uint256 _rewardRate) external onlyOwner {
         updateSecondsPerLiquidity(poolId);
+        // update reward period
         currentRewardPeriod[poolId] += 1;
+        // set new starting parameters
         secondsPerLiquidity[poolId][currentRewardPeriod[poolId]] =
             secondsPerLiquidity[poolId][currentRewardPeriod[poolId] - 1];
+        lastUpdateTimeOfSecondsPerLiquidity[poolId][currentRewardPeriod[poolId]] = block.timestamp;
+        // set reward rate
         rewardRate[poolId][currentRewardPeriod[poolId]] = _rewardRate;
     }
 

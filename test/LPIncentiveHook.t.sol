@@ -20,6 +20,7 @@ import {Hooks} from "v4-core/libraries/Hooks.sol";
 import {StateLibrary} from "v4-core/libraries/StateLibrary.sol";
 
 import {LPIncentiveHook} from "../src/LPIncentiveHook.sol";
+import {console} from "forge-std/console.sol";
 
 contract LPIncentiveHookTest is Test, Deployers {
     using PoolIdLibrary for PoolKey;
@@ -772,7 +773,8 @@ contract LPIncentiveHookTest is Test, Deployers {
             "Total rewards should be proportional to total liquidity"
         );
     }
-        function test_RewardRateChange() public {
+
+    function test_RewardRateChange() public {
         // Deal tokens to alice
         deal(Currency.unwrap(token0), alice, 100000 ether);
         deal(Currency.unwrap(token1), alice, 100000 ether);
@@ -795,36 +797,33 @@ contract LPIncentiveHookTest is Test, Deployers {
 
         // Wait some time for rewards to accumulate at initial rate
         advanceTime(timeDiff);
-        
+
         // Change reward rate
         vm.prank(owner);
         hook.setRewardRate(key.toId(), newRewardRate);
-        
+
         // Wait some more time for rewards to accumulate at new rate
         advanceTime(timeDiff);
-        
+
         // Remove liquidity
         removeLiquidity(alice, liquidity, tickLower, tickUpper);
-        
+
         // Get accumulated rewards
         uint256 aliceRewards = hook.accumulatedRewards(address(modifyLiquidityRouters[alice]));
-        
+
         // Calculate expected rewards
         // First period: liquidity * time * initialRewardRate
         // Second period: liquidity * time * newRewardRate
         // Each period's reward calculation needs to be adjusted for the secondsPerLiquidity calculation
-        uint256 expectedRewardsFirstPeriod = timeDiff * liquidity * initialRewardRate;
-        uint256 expectedRewardsSecondPeriod = timeDiff  * liquidity * newRewardRate;
+        uint256 expectedRewardsFirstPeriod = timeDiff * 1e36 * initialRewardRate;
+        uint256 expectedRewardsSecondPeriod = timeDiff * 1e36 * newRewardRate;
         uint256 expectedTotalRewards = expectedRewardsFirstPeriod + expectedRewardsSecondPeriod;
-        
+
         // Verify rewards
         assertApproxEqRel(
-            aliceRewards,
-            expectedTotalRewards,
-            0.01e18,
-            "Rewards should reflect both rate periods correctly"
+            aliceRewards, expectedTotalRewards, 0.01e18, "Rewards should reflect both rate periods correctly"
         );
-        
+
         // Verify the reward periods were tracked correctly
         assertEq(hook.currentRewardPeriod(key.toId()), 2, "Current reward period should be 2");
         assertEq(hook.rewardRate(key.toId(), 1), initialRewardRate, "Initial reward rate should be stored correctly");
