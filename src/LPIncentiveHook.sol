@@ -172,7 +172,7 @@ contract LPIncentiveHook is BaseHook, Ownable {
             // Only update if time has passed
             uint256 currentLiquidity = poolManager.getLiquidity(poolId);
             if (currentLiquidity > 0) {
-                // Scale by 1e18 to maintain precision
+                // Scale by 1e36 to maintain precision
                 secondsPerLiquidity[poolId][currentRewardPeriod[poolId]] += (timeElapsed * 1e36) / currentLiquidity;
             }
             lastUpdateTimeOfSecondsPerLiquidity[poolId][currentRewardPeriod[poolId]] = block.timestamp;
@@ -266,8 +266,6 @@ contract LPIncentiveHook is BaseHook, Ownable {
         returns (uint256)
     {
         // Adjust reward calculation to properly account for time and liquidity
-        // REWARD_RATE is per second per unit of liquidity (1e18)
-        // We divide by 1e36 because totalSecondsPerLiquidity is scaled by 1e18 and we want to normalize the result
         return (totalSecondsPerLiquidity * liquidity * rewardRate[poolId][rewardPeriod]);
     }
 
