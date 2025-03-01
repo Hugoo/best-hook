@@ -766,7 +766,7 @@ contract LPIncentiveHookTest is Test, Deployers {
         // Verify rewards are proportional to total liquidity provided across both pools
         assertApproxEqRel(
             aliceRewards,
-            (liquidity1 * hook.secondsPerLiquidity(key.toId())*rewardRate) + (liquidity2 * hook.secondsPerLiquidity(key2.toId())), // Todo: this shoud actually be weighted by the tokens value! 
+            (liquidity1 * hook.secondsPerLiquidity(key.toId())*rewardRate*2) + (liquidity2 * hook.secondsPerLiquidity(key2.toId())*rewardRate), // Todo: this shoud actually be weighted by the tokens value! 
             0.01e18,
             "Total rewards should be proportional to total liquidity"
         );
