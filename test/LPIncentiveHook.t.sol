@@ -154,15 +154,15 @@ contract LPIncentiveHookTest is Test, Deployers {
         removeLiquidity(bob, liquidity * 2, tickLower, tickUpper);
 
         // Get secondsperliquidityOutisde for both ticks
-        uint256 aliceSecondsPerLiquidityOutsideLower = hook.secondsPerLiquidityOutside(key.toId(), tickLower);
-        uint256 aliceSecondsPerLiquidityOutsideUpper = hook.secondsPerLiquidityOutside(key.toId(), tickUpper);
+        uint256 aliceSecondsPerLiquidityOutsideLower = hook.secondsPerLiquidityOutside(key.toId(), tickLower, 1);
+        uint256 aliceSecondsPerLiquidityOutsideUpper = hook.secondsPerLiquidityOutside(key.toId(), tickUpper, 1);
         // assert that they are greater than zero
         assertEq(
             aliceSecondsPerLiquidityOutsideLower, 0, "Alice's secondsPerLiquidityOutsideLower should be greater than 0"
         );
         assertEq(
             aliceSecondsPerLiquidityOutsideUpper,
-            hook.secondsPerLiquidity(key.toId()),
+            hook.secondsPerLiquidity(key.toId(), 1),
             "Alice's secondsPerLiquidityOutsideUpper should be greater than 0"
         );
         // Get accumulated rewards
@@ -202,17 +202,17 @@ contract LPIncentiveHookTest is Test, Deployers {
 
         // Verify initial state
         assertEq(
-            hook.lastUpdateTimeOfSecondsPerLiquidity(poolId),
+            hook.lastUpdateTimeOfSecondsPerLiquidity(poolId, 1),
             block.timestamp,
             "Last update time should be set to current timestamp"
         );
 
-        assertEq(hook.secondsPerLiquidity(poolId), 0, "secondsPerLiquidity should be initialized");
+        assertEq(hook.secondsPerLiquidity(poolId, 1), 0, "secondsPerLiquidity should be initialized");
 
         // Verify position-specific state
         assertEq(
-            hook.secondsPerLiquidityInsideDeposit(poolId, positionKey),
-            hook.calculateSecondsPerLiquidityInside(poolId, params.tickLower, params.tickUpper),
+            hook.secondsPerLiquidityInsideDeposit(poolId, positionKey, 1),
+            hook.calculateSecondsPerLiquidityInside(poolId, params.tickLower, params.tickUpper, 1),
             "Initial secondsPerLiquidityInside should be set correctly"
         );
 
@@ -705,7 +705,7 @@ contract LPIncentiveHookTest is Test, Deployers {
         // Create a second pool with different fee tier
         (PoolKey memory key2,) = initPool(token0, token1, hook, 500, SQRT_PRICE_1_1);
         vm.prank(owner);
-        hook.setRewardRate(key2.toId(), 2*rewardRate);
+        hook.setRewardRate(key2.toId(), 2 * rewardRate);
 
         int24 tickLower = -120;
         int24 tickUpper = 120;
@@ -754,19 +754,20 @@ contract LPIncentiveHookTest is Test, Deployers {
 
         // Verify secondsPerLiquidity is tracked separately for each pool
         assertEq(
-            hook.secondsPerLiquidity(key.toId()),
+            hook.secondsPerLiquidity(key.toId(), 1),
             (timeDiff * 1e36) / liquidity1,
             "Incorrect secondsPerLiquidity for pool 1"
         );
         assertEq(
-            hook.secondsPerLiquidity(key2.toId()),
+            hook.secondsPerLiquidity(key2.toId(), 1),
             (timeDiff * 1e36) / liquidity2,
             "Incorrect secondsPerLiquidity for pool 2"
         );
         // Verify rewards are proportional to total liquidity provided across both pools
         assertApproxEqRel(
             aliceRewards,
-            (liquidity1 * hook.secondsPerLiquidity(key.toId())*rewardRate*2) + (liquidity2 * hook.secondsPerLiquidity(key2.toId())*rewardRate), // Todo: this shoud actually be weighted by the tokens value! 
+            (liquidity1 * hook.secondsPerLiquidity(key.toId(), 1) * rewardRate * 2)
+                + (liquidity2 * hook.secondsPerLiquidity(key2.toId(), 1) * rewardRate), // Todo: this shoud actually be weighted by the tokens value!
             0.01e18,
             "Total rewards should be proportional to total liquidity"
         );
