@@ -15,8 +15,9 @@ import {PoolId, PoolIdLibrary} from "v4-core/types/PoolId.sol";
 import {PoolKey} from "v4-core/types/PoolKey.sol";
 import {BalanceDelta} from "v4-core/types/BalanceDelta.sol";
 import {BeforeSwapDelta} from "v4-core/types/BeforeSwapDelta.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
-contract LPIncentiveHook is BaseHook {
+contract LPIncentiveHook is BaseHook, Ownable {
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
 
@@ -40,11 +41,16 @@ contract LPIncentiveHook is BaseHook {
     mapping(address => uint256) public accumulatedRewards;
 
     // Reward rate per second per unit of liquidity
-    uint256 public constant REWARD_RATE = 1e18; // Configurable
-    int24 public tickSpacing = 60; // Configurable
+    mapping(PoolId => uint256) public rewardRate;
+    // Tick spacing for rewards
+    int24 public tickSpacing = 60; // Configurable Todo: check if this is correct
 
-    constructor(IPoolManager _manager, IERC20 _rewardToken) BaseHook(_manager) {
+    constructor(IPoolManager _manager, IERC20 _rewardToken, address owner) BaseHook(_manager) Ownable(owner) {
         rewardToken = _rewardToken;
+    }
+
+    function setRewardRate(PoolId  poolId, uint256 _rewardRate) external onlyOwner {
+        rewardRate[poolId] = _rewardRate;
     }
 
     function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
@@ -74,6 +80,9 @@ contract LPIncentiveHook is BaseHook {
         bytes calldata
     ) internal override returns (bytes4, int128) {
         PoolId poolId = key.toId();
+        if (rewardRate[poolId] == 0) {
+            return (BaseHook.afterSwap.selector, 0);
+        }
         (, int24 currentTick,,) = poolManager.getSlot0(poolId);
         int24 oldTick = beforeSwapTick[poolId];
 
@@ -104,6 +113,9 @@ contract LPIncentiveHook is BaseHook {
     ) internal override returns (bytes4) {
         // maybe put this into afterINitialized
         PoolId poolId = key.toId();
+        if (rewardRate[poolId] == 0) {
+            return (BaseHook.beforeAddLiquidity.selector);
+        }
         (, int24 currentTick,,) = poolManager.getSlot0(poolId);
         beforeSwapTick[poolId] = currentTick;
 
@@ -124,6 +136,9 @@ contract LPIncentiveHook is BaseHook {
         bytes calldata
     ) internal override returns (bytes4) {
         PoolId poolId = key.toId();
+        if (rewardRate[poolId] == 0) {
+            return (BaseHook.beforeRemoveLiquidity.selector);
+        }
         (, int24 currentTick,,) = poolManager.getSlot0(poolId);
         bytes32 positionKey = Position.calculatePositionKey(sender, params.tickLower, params.tickUpper, params.salt);
 
@@ -178,7 +193,7 @@ contract LPIncentiveHook is BaseHook {
 
             // Calculate rewards based on the position's liquidity before the modification
             if (positionLiquidity > 0) {
-                uint256 rewards = calculateRewards(totalSecondsPerLiquidity, uint256(positionLiquidity));
+                uint256 rewards = calculateRewards(totalSecondsPerLiquidity, uint256(positionLiquidity), poolId);
                 accumulatedRewards[sender] += rewards;
             }
         }
@@ -201,11 +216,15 @@ contract LPIncentiveHook is BaseHook {
         return secondsPerLiquidity[poolId] - secondsPerLiquidityBelow - secondsPerLiquidityAbove;
     }
 
-    function calculateRewards(uint256 totalSecondsPerLiquidity, uint256 liquidity) internal pure returns (uint256) {
+    function calculateRewards(uint256 totalSecondsPerLiquidity, uint256 liquidity, PoolId poolId)
+        internal
+        view
+        returns (uint256)
+    {
         // Adjust reward calculation to properly account for time and liquidity
         // REWARD_RATE is per second per unit of liquidity (1e18)
         // We divide by 1e36 because totalSecondsPerLiquidity is scaled by 1e18 and we want to normalize the result
-        return (totalSecondsPerLiquidity * liquidity);
+        return (totalSecondsPerLiquidity * liquidity * rewardRate[poolId]);
     }
 
     function redeemRewards() external {
