@@ -949,6 +949,134 @@ contract LPIncentiveHookTest is Test, Deployers {
         assertEq(hook.rewardRate(key.toId(), 2), newRewardRate, "New reward rate should be stored correctly");
     }
 
+    function test_DecreasingRewardRateAdjustments() public {
+        // Setup initial high reward rate
+        uint256 initialHighRate = rewardRate * 10; // 10x the default rate
+        vm.prank(owner);
+        hook.setRewardRate(key.toId(), initialHighRate);
+
+        // Deal tokens to users
+        deal(Currency.unwrap(token0), alice, 100000 ether);
+        deal(Currency.unwrap(token1), alice, 100000 ether);
+        deal(Currency.unwrap(token0), bob, 100000 ether);
+        deal(Currency.unwrap(token1), bob, 100000 ether);
+
+        // Approve tokens for router
+        vm.startPrank(alice);
+        IERC20(Currency.unwrap(token0)).approve(address(modifyLiquidityRouters[alice]), type(uint256).max);
+        IERC20(Currency.unwrap(token1)).approve(address(modifyLiquidityRouters[alice]), type(uint256).max);
+        IERC20(Currency.unwrap(token0)).approve(address(swapRouter), type(uint256).max);
+        IERC20(Currency.unwrap(token1)).approve(address(swapRouter), type(uint256).max);
+        vm.stopPrank();
+
+        vm.startPrank(bob);
+        IERC20(Currency.unwrap(token0)).approve(address(modifyLiquidityRouters[bob]), type(uint256).max);
+        IERC20(Currency.unwrap(token1)).approve(address(modifyLiquidityRouters[bob]), type(uint256).max);
+        vm.stopPrank();
+
+        int24 tickLower = -120;
+        int24 tickUpper = 120;
+        uint256 liquidity = 1000e18;
+
+        // Alice and Bob add liquidity
+        addLiquidity(alice, liquidity, tickLower, tickUpper);
+        addLiquidity(bob, liquidity, tickLower, tickUpper);
+
+        // Trading period with high reward rate
+        uint256 timeDiff = 1000;
+        advanceTime(timeDiff / 2);
+
+        // Do a swap to simulate trading
+        vm.prank(alice);
+        swapRouter.swap{gas: 10000000}(
+            key,
+            IPoolManager.SwapParams({zeroForOne: false, amountSpecified: 1 ether, sqrtPriceLimitX96: MAX_PRICE_LIMIT}),
+            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
+            ZERO_BYTES
+        );
+
+        advanceTime(timeDiff / 2);
+
+        // First reward rate decrease (to 50% of initial)
+        uint256 midRate = initialHighRate / 2;
+        vm.prank(owner);
+        hook.setRewardRate(key.toId(), midRate);
+
+        // Store rewards accumulated so far
+        uint256 aliceRewardsAfterFirstPeriod = (timeDiff / 2 * 1e36 * initialHighRate) / 2;
+        uint256 bobRewardsAfterFirstPeriod = (timeDiff / 2 * 1e36 * initialHighRate) / 2;
+
+        // More time passes with mid rate
+        advanceTime(timeDiff);
+
+        // Alice withdraws half her liquidity
+        removeLiquidity(alice, liquidity / 2, tickLower, tickUpper);
+        uint256 aliceRewardsAfterPartialWithdrawal = hook.accumulatedRewards(address(modifyLiquidityRouters[alice]));
+
+        // Second reward rate decrease (to 25% of initial)
+        uint256 finalRate = midRate / 2;
+        vm.prank(owner);
+        hook.setRewardRate(key.toId(), finalRate);
+
+        // More time passes with final rate
+        advanceTime(timeDiff);
+
+        // Bob withdraws his full liquidity
+        removeLiquidity(bob, liquidity, tickLower, tickUpper);
+        uint256 bobFinalRewards = hook.accumulatedRewards(address(modifyLiquidityRouters[bob]));
+
+        // Alice withdraws her remaining liquidity
+        removeLiquidity(alice, liquidity / 2, tickLower, tickUpper);
+        uint256 aliceFinalRewards = hook.accumulatedRewards(address(modifyLiquidityRouters[alice]));
+
+        // Verify reward tracking
+        assertEq(hook.currentRewardPeriod(key.toId()), 4, "Current reward period should be 3");
+        assertEq(hook.rewardRate(key.toId(), 2), initialHighRate, "Initial high rate should be stored correctly");
+        assertEq(hook.rewardRate(key.toId(), 3), midRate, "Middle rate should be stored correctly");
+        assertEq(hook.rewardRate(key.toId(), 4), finalRate, "Final rate should be stored correctly");
+
+        // Verify rewards increase at each step
+        assertGt(aliceRewardsAfterFirstPeriod, 0, "Alice should have rewards after first period");
+        assertGt(
+            aliceRewardsAfterPartialWithdrawal,
+            aliceRewardsAfterFirstPeriod,
+            "Alice's rewards should increase after second period"
+        );
+        assertGt(
+            aliceFinalRewards,
+            aliceRewardsAfterPartialWithdrawal,
+            "Alice's final rewards should be greater than after partial withdrawal"
+        );
+
+        // Verify reward rate impact
+        uint256 aliceSecondPeriodRewards = aliceRewardsAfterPartialWithdrawal - aliceRewardsAfterFirstPeriod;
+        uint256 aliceThirdPeriodRewards = aliceFinalRewards - aliceRewardsAfterPartialWithdrawal;
+
+        // Second period had mid rate with full liquidity, third period had final rate with half liquidity
+        // So if we normalize (divide third period by 1/3 for liquidity and multiply by 2 for rate difference),
+        // they should be roughly equal
+        uint256 normalizedThirdPeriodRewards = aliceThirdPeriodRewards * 6; // Adjust for both 1/3 liquidity and quarter rate
+        assertApproxEqRel(
+            aliceSecondPeriodRewards,
+            normalizedThirdPeriodRewards,
+            0.05e18,
+            "Normalized rewards should be approximately equal across periods"
+        );
+
+        // Bob maintained full liquidity throughout, so his rewards should follow rate ratios
+        uint256 expectedBobFinalPeriodRewards =
+            bobRewardsAfterFirstPeriod + (timeDiff * midRate) * 1e36 * 2 / 3 + (timeDiff * finalRate) * 1e36;
+        assertApproxEqRel(
+            bobFinalRewards,
+            expectedBobFinalPeriodRewards,
+            0.1e18,
+            "Bob's rewards should follow rate changes proportionally"
+        );
+
+        // Bob should have more total rewards than Alice since he maintained full liquidity
+        assertGt(bobFinalRewards, aliceFinalRewards, "Bob should have more rewards than Alice");
+    }
+
     // -----------------------------
     //   internal helper functions
     // -----------------------------
