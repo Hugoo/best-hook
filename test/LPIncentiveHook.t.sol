@@ -1203,6 +1203,148 @@ contract LPIncentiveHookTest is Test, Deployers {
         assertApproxEqRel(bobRewards, expectedBobRewards, 0.01e18, "Bob's rewards should match expected amount");
     }
 
+    function test_OverlappingRangesWithPriceMovementAndRateChange() public {
+        //  Liquidity Distribution
+        //          price
+        //  -240 --- -60 --- 0 --- 60 --- 240
+        //
+        //  =====================               <- Alice (-240 to 60)
+        //              ===================     <- Bob   (-60 to 240)
+        //              ===                     <- Overlap (-60 to 60)
+
+        // Deal tokens to users
+        deal(Currency.unwrap(token0), alice, 100000 ether);
+        deal(Currency.unwrap(token1), alice, 100000 ether);
+        deal(Currency.unwrap(token0), bob, 100000 ether);
+        deal(Currency.unwrap(token1), bob, 100000 ether);
+
+        // Approve tokens for router
+        vm.startPrank(alice);
+        IERC20(Currency.unwrap(token0)).approve(address(modifyLiquidityRouters[alice]), type(uint256).max);
+        IERC20(Currency.unwrap(token1)).approve(address(modifyLiquidityRouters[alice]), type(uint256).max);
+        IERC20(Currency.unwrap(token0)).approve(address(swapRouter), type(uint256).max);
+        IERC20(Currency.unwrap(token1)).approve(address(swapRouter), type(uint256).max);
+        vm.stopPrank();
+
+        vm.startPrank(bob);
+        IERC20(Currency.unwrap(token0)).approve(address(modifyLiquidityRouters[bob]), type(uint256).max);
+        IERC20(Currency.unwrap(token1)).approve(address(modifyLiquidityRouters[bob]), type(uint256).max);
+        vm.stopPrank();
+
+        // Setup position ranges
+        int24 tickLowerAlice = -240;
+        int24 tickUpperAlice = 60;
+        int24 tickLowerBob = -60;
+        int24 tickUpperBob = 240;
+
+        uint256 liquidity = 1000e18;
+
+        // Add liquidity
+        addLiquidity(alice, liquidity, tickLowerAlice, tickUpperAlice);
+        addLiquidity(bob, liquidity, tickLowerBob, tickUpperBob);
+
+        // Verify initial price is at tick 0 (in both ranges)
+        (, int24 currentTick,,) = manager.getSlot0(key.toId());
+        assertEq(currentTick, 0, "Initial tick should be at 0");
+
+        uint256 initialRewardRate = rewardRate;
+        uint256 timeDiff = 1000;
+
+        // Wait with price in both ranges
+        advanceTime(timeDiff);
+
+        // Perform swap to move price below -60 (in Alice's range only, out of Bob's range)
+        vm.prank(alice);
+        swapRouter.swap{gas: 10000000}(
+            key,
+            IPoolManager.SwapParams({
+                zeroForOne: true, // Move price down
+                amountSpecified: 10 ether,
+                sqrtPriceLimitX96: MIN_PRICE_LIMIT
+            }),
+            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
+            ZERO_BYTES
+        );
+
+        // Verify price is below -60 (in Alice's range only)
+        (, currentTick,,) = manager.getSlot0(key.toId());
+        assertLt(currentTick, tickLowerBob, "Tick should be below Bob's lower tick");
+        assertGt(currentTick, tickLowerAlice, "Tick should be above Alice's lower tick");
+
+        // Wait with price only in Alice's range
+        advanceTime(timeDiff);
+
+        // Change reward rate
+        uint256 newRewardRate = initialRewardRate * 2;
+        vm.prank(owner);
+        hook.setRewardRate(key.toId(), newRewardRate);
+
+        // Wait a bit more with the new rate
+        advanceTime(timeDiff / 2);
+
+        // Move price back to the overlapping range
+        vm.prank(alice);
+        swapRouter.swap{gas: 10000000}(
+            key,
+            IPoolManager.SwapParams({
+                zeroForOne: false, // Move price up
+                amountSpecified: 5 ether,
+                sqrtPriceLimitX96: MAX_PRICE_LIMIT
+            }),
+            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
+            ZERO_BYTES
+        );
+
+        // Verify price is in the overlapping range
+        (, currentTick,,) = manager.getSlot0(key.toId());
+        assertGt(currentTick, tickLowerBob, "Tick should be above Bob's lower tick");
+        assertLt(currentTick, tickUpperAlice, "Tick should be below Alice's upper tick");
+
+        // Wait with price in both ranges at new rate
+        advanceTime(timeDiff);
+
+        // Remove liquidity
+        removeLiquidity(alice, liquidity, tickLowerAlice, tickUpperAlice);
+        removeLiquidity(bob, liquidity, tickLowerBob, tickUpperBob);
+
+        // Get accumulated rewards
+        uint256 aliceRewards = hook.accumulatedRewards(address(modifyLiquidityRouters[alice]));
+        uint256 bobRewards = hook.accumulatedRewards(address(modifyLiquidityRouters[bob]));
+
+        // Calculate expected rewards
+        // Alice was in range for entire test duration:
+        // - timeDiff with initialRewardRate
+        // - timeDiff with only her in range
+        // - timeDiff/2 with new rate but only her in range
+        // - timeDiff with new rate and both in range
+
+        // Bob was only in range for:
+        // - timeDiff with initialRewardRate at the beginning
+        // - timeDiff with newRewardRate at the end
+
+        // Alice should have significantly more rewards than Bob
+        assertGt(aliceRewards, bobRewards, "Alice should have more rewards than Bob");
+
+        // Verify both have non-zero rewards
+        assertGt(aliceRewards, 0, "Alice should have rewards");
+        assertGt(bobRewards, 0, "Bob should have rewards");
+
+        // Verify reward periods were tracked correctly
+        assertEq(hook.currentRewardPeriod(key.toId()), 2, "Current reward period should be 2");
+        assertEq(hook.rewardRate(key.toId(), 1), initialRewardRate, "Initial reward rate should be stored correctly");
+        assertEq(hook.rewardRate(key.toId(), 2), newRewardRate, "New reward rate should be stored correctly");
+
+        // Calculate roughly what the reward ratio should be
+        // In the first period, Alice and Bob were in range for the same amount of time -> Token split (1/2, 1/2) * 1
+        // In the second period, Alice was in range for 1 timeDiff with the old rate -> Token split (1, 0) * 1
+        // IN the 3rd period, Alice was in range for 1/2 timeDiff with the new rate -> Token split (1/2, 0) * 2
+        // In the last period, Alice was in range for 1 timeDiff with the new rate, Bob was in range for 1 timeDiff with the new rate -. Token split (1, 1) * 2
+        // Total token split (7/2, 3/2)
+        assertApproxEqRel(
+            aliceRewards * 3, bobRewards * 7, 0.1e18, "Alice should have approximately twice the rewards of Bob"
+        );
+    }
+
     // -----------------------------
     //   internal helper functions
     // -----------------------------
