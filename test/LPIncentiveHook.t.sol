@@ -1077,6 +1077,132 @@ contract LPIncentiveHookTest is Test, Deployers {
         assertGt(bobFinalRewards, aliceFinalRewards, "Bob should have more rewards than Alice");
     }
 
+    function test_ZeroRewardRate() public {
+        //  Liquidity Distribution
+        //          price
+        //  -120 ---- 0 ---- 60 ---------- 240
+        //
+        //     ---------------                   <- Alice (1x liquidity)
+        //                    ===============    <- Bob   (2x liquidity)
+
+        // Deal tokens to users
+        deal(Currency.unwrap(token0), alice, 100000 ether);
+        deal(Currency.unwrap(token1), alice, 100000 ether);
+        deal(Currency.unwrap(token0), bob, 200000 ether);
+        deal(Currency.unwrap(token1), bob, 200000 ether);
+
+        // Approve tokens for router
+        vm.startPrank(alice);
+        IERC20(Currency.unwrap(token0)).approve(address(modifyLiquidityRouters[alice]), type(uint256).max);
+        IERC20(Currency.unwrap(token1)).approve(address(modifyLiquidityRouters[alice]), type(uint256).max);
+        IERC20(Currency.unwrap(token0)).approve(address(swapRouter), type(uint256).max);
+        IERC20(Currency.unwrap(token1)).approve(address(swapRouter), type(uint256).max);
+        vm.stopPrank();
+
+        vm.startPrank(bob);
+        IERC20(Currency.unwrap(token0)).approve(address(modifyLiquidityRouters[bob]), type(uint256).max);
+        IERC20(Currency.unwrap(token1)).approve(address(modifyLiquidityRouters[bob]), type(uint256).max);
+        IERC20(Currency.unwrap(token0)).approve(address(swapRouter), type(uint256).max);
+        IERC20(Currency.unwrap(token1)).approve(address(swapRouter), type(uint256).max);
+        vm.stopPrank();
+
+        // Create test params for liquidity positions with ticks that are multiples of 60
+        int24 tickLowerAlice = -120;
+        int24 tickUpperAlice = 60;
+        int24 tickLowerBob = tickUpperAlice;
+        int24 tickUpperBob = 240;
+
+        uint256 liquidity = 1000e18;
+
+        addLiquidity(alice, liquidity, tickLowerAlice, tickUpperAlice);
+        addLiquidity(bob, liquidity * 2, tickLowerBob, tickUpperBob);
+
+        (, int24 startingTick,,) = manager.getSlot0(key.toId());
+        assertGt(startingTick, tickLowerAlice, "Initial tick should be in Alice's range. Above her lower tick");
+        assertLt(startingTick, tickUpperAlice, "Initial tick should be in Alice's range. Below her upper tick");
+
+        uint256 timeDiff = 1000;
+
+        advanceTime(timeDiff); // Spend timeDiff in Alice's range
+
+        // Perform a large swap to cross ticks into Bob's range
+        vm.prank(alice);
+        swapRouter.swap{gas: 10000000}(
+            key,
+            IPoolManager.SwapParams({
+                zeroForOne: false,
+                amountSpecified: 3.2 ether,
+                sqrtPriceLimitX96: MAX_PRICE_LIMIT // Swap as far as possible
+            }),
+            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
+            ZERO_BYTES
+        );
+
+        // Get ending tick
+        (, int24 endingTick,,) = manager.getSlot0(key.toId());
+
+        // Verify tick was crossed
+        assertNotEq(startingTick, endingTick, "Tick should have changed");
+        assertGt(endingTick, tickLowerBob, "Tick should be in Bob's range");
+
+        advanceTime(timeDiff); // Spend timeDiff in Bob's range
+
+        // Set reward rate to zero
+        vm.prank(owner);
+        hook.setRewardRate(key.toId(), 0);
+
+        // Wait some more time - this should not generate rewards
+        advanceTime(timeDiff);
+
+        // Perform swap back to Alice's range
+        vm.prank(bob);
+        swapRouter.swap{gas: 10000000}(
+            key,
+            IPoolManager.SwapParams({zeroForOne: true, amountSpecified: 1.1 ether, sqrtPriceLimitX96: MIN_PRICE_LIMIT}),
+            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
+            ZERO_BYTES
+        );
+
+        // Verify we're back in Alice's range
+        (, int24 finalTick,,) = manager.getSlot0(key.toId());
+        assertGt(finalTick, tickLowerAlice, "Tick should be back in Alice's range");
+        assertLt(finalTick, tickUpperAlice, "Tick should be back in Alice's range");
+
+        // Wait more time with zero reward rate
+        advanceTime(timeDiff);
+
+        // Remove liquidity
+        removeLiquidity(alice, liquidity, tickLowerAlice, tickUpperAlice);
+        removeLiquidity(bob, liquidity * 2, tickLowerBob, tickUpperBob);
+
+        // Get accumulated rewards
+        uint256 aliceRewards = hook.accumulatedRewards(address(modifyLiquidityRouters[alice]));
+        uint256 bobRewards = hook.accumulatedRewards(address(modifyLiquidityRouters[bob]));
+
+        // Both should have non-zero rewards from before rate was set to zero
+        assertGt(aliceRewards, 0, "Alice should have rewards from before rate was zero");
+        assertGt(bobRewards, 0, "Bob should have rewards from before rate was zero");
+
+        // Verify the reward periods
+        assertEq(hook.currentRewardPeriod(key.toId()), 2, "Current reward period should be 2");
+        assertEq(hook.rewardRate(key.toId(), 1), rewardRate, "Initial reward rate should be stored correctly");
+        assertEq(hook.rewardRate(key.toId(), 2), 0, "Zero reward rate should be stored correctly");
+
+        // Check that rewards are consistent with expected values
+        // They only earned during first two periods, and not during the zero-rate periods
+
+        // Time spent before rate went to zero:
+        // Alice: timeDiff (in her range) + 0 (in Bob's range) = timeDiff
+        // Bob: 0 (in Alice's range) + timeDiff (in his range) = timeDiff
+
+        // Calculate expected rewards
+        uint256 expectedAliceRewards = (timeDiff * 1e36) * rewardRate; // Alice should get rewards for first period
+        uint256 expectedBobRewards = (timeDiff * 1e36) * rewardRate; // Bob should get rewards for second period
+
+        assertApproxEqRel(aliceRewards, expectedAliceRewards, 0.01e18, "Alice's rewards should match expected amount");
+        assertApproxEqRel(bobRewards, expectedBobRewards, 0.01e18, "Bob's rewards should match expected amount");
+    }
+
     // -----------------------------
     //   internal helper functions
     // -----------------------------
