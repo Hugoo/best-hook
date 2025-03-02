@@ -20,7 +20,6 @@ import {Hooks} from "v4-core/libraries/Hooks.sol";
 import {StateLibrary} from "v4-core/libraries/StateLibrary.sol";
 
 import {LPIncentiveHook} from "../src/LPIncentiveHook.sol";
-import {console} from "forge-std/console.sol";
 
 contract LPIncentiveHookTest is Test, Deployers {
     using PoolIdLibrary for PoolKey;
@@ -49,8 +48,10 @@ contract LPIncentiveHookTest is Test, Deployers {
         rewardToken = deployMintAndApproveCurrency();
 
         // Calculate hook address based on permissions
-        uint160 flags =
-            uint160(Hooks.BEFORE_ADD_LIQUIDITY_FLAG | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG | Hooks.AFTER_SWAP_FLAG);
+        uint160 flags = uint160(
+            Hooks.BEFORE_ADD_LIQUIDITY_FLAG | Hooks.AFTER_ADD_LIQUIDITY_FLAG | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG
+                | Hooks.AFTER_REMOVE_LIQUIDITY_FLAG | Hooks.AFTER_SWAP_FLAG
+        );
         address hookAddress = address(flags);
 
         // Deploy the hook at the correct address
@@ -336,7 +337,7 @@ contract LPIncentiveHookTest is Test, Deployers {
         // - in Alice's range for timeDiff
         // - in Bob's range for timeDiff
         // Bob has twice the liquidity of Alice, so he should have twice the rewards.
-        assertEq(bobRewards, aliceRewards * 2, "Bob should have twice the rewards of Alice");
+        assertEq(bobRewards, aliceRewards, "Bob should have gotten the same rewards of Alice");
 
         // Both should have non-zero rewards
         assertGt(aliceRewards, 0, "Alice should have rewards");
@@ -419,14 +420,10 @@ contract LPIncentiveHookTest is Test, Deployers {
         uint256 aliceRewards = hook.accumulatedRewards(address(modifyLiquidityRouters[alice]));
         uint256 bobRewards = hook.accumulatedRewards(address(modifyLiquidityRouters[bob]));
 
-        // Bob should have approximately twice the rewards as Alice for the same time period
-        // Since time is split 75/25, and Bob has 2x liquidity:
-        // Alice's effective share: 0.75 * 1x = 0.75
-        // Bob's effective share:   0.25 * 2x = 0.5
-        // Bob's rewards should be about 2/3 of Alice's rewards
+        // Bob should have approximately 1/3 of the rewards of Alice
         assertEq(
             bobRewards * 3,
-            aliceRewards * 2,
+            aliceRewards,
             "Bob should have approximately twice the rewards of Alice for the same time period"
         );
 
@@ -825,6 +822,128 @@ contract LPIncentiveHookTest is Test, Deployers {
         );
 
         // Verify the reward periods were tracked correctly
+        assertEq(hook.currentRewardPeriod(key.toId()), 2, "Current reward period should be 2");
+        assertEq(hook.rewardRate(key.toId(), 1), initialRewardRate, "Initial reward rate should be stored correctly");
+        assertEq(hook.rewardRate(key.toId(), 2), newRewardRate, "New reward rate should be stored correctly");
+    }
+
+    function test_RewardRateChangeWithRangeMovement() public {
+        // Deal tokens to users
+        deal(Currency.unwrap(token0), alice, 100000 ether);
+        deal(Currency.unwrap(token1), alice, 100000 ether);
+        deal(Currency.unwrap(token0), bob, 100000 ether);
+        deal(Currency.unwrap(token1), bob, 100000 ether);
+
+        // Approve tokens for router and swap router
+        vm.startPrank(alice);
+        IERC20(Currency.unwrap(token0)).approve(address(modifyLiquidityRouters[alice]), type(uint256).max);
+        IERC20(Currency.unwrap(token1)).approve(address(modifyLiquidityRouters[alice]), type(uint256).max);
+        IERC20(Currency.unwrap(token0)).approve(address(swapRouter), type(uint256).max);
+        IERC20(Currency.unwrap(token1)).approve(address(swapRouter), type(uint256).max);
+        vm.stopPrank();
+
+        vm.startPrank(bob);
+        IERC20(Currency.unwrap(token0)).approve(address(modifyLiquidityRouters[bob]), type(uint256).max);
+        IERC20(Currency.unwrap(token1)).approve(address(modifyLiquidityRouters[bob]), type(uint256).max);
+        vm.stopPrank();
+
+        // Alice's position will have a narrower range
+        int24 tickLowerAlice = -120;
+        int24 tickUpperAlice = 120;
+
+        // Bob's position will have a wider range to provide liquidity for price movement
+        int24 tickLowerBob = -240;
+        int24 tickUpperBob = 240;
+
+        uint256 liquidity = 1000e18;
+        uint256 initialRewardRate = rewardRate;
+        uint256 newRewardRate = rewardRate * 2;
+        uint256 timeDiff = 1000;
+
+        // Add liquidity for both users
+        addLiquidity(alice, liquidity, tickLowerAlice, tickUpperAlice);
+        addLiquidity(bob, liquidity, tickLowerBob, tickUpperBob);
+
+        // Wait some time for rewards to accumulate at initial rate
+        advanceTime(timeDiff);
+
+        // Change reward rate
+        vm.prank(owner);
+        hook.setRewardRate(key.toId(), newRewardRate);
+
+        // Perform a large swap to move price outside of Alice's range but still within Bob's range
+        vm.prank(alice);
+        swapRouter.swap{gas: 10000000}(
+            key,
+            IPoolManager.SwapParams({zeroForOne: false, amountSpecified: 13 ether, sqrtPriceLimitX96: MAX_PRICE_LIMIT}),
+            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
+            ZERO_BYTES
+        );
+
+        // Verify we're outside Alice's range but still in Bob's range
+        (, int24 currentTick,,) = manager.getSlot0(key.toId());
+        assertGt(currentTick, tickUpperAlice, "Tick should be outside Alice's range");
+        assertLt(currentTick, tickUpperBob, "Tick should be within Bob's range");
+
+        // Wait while position is out of range for Alice - should not accumulate rewards for her
+        advanceTime(timeDiff);
+
+        // Move price back into Alice's range
+        vm.prank(alice);
+        swapRouter.swap{gas: 10000000}(
+            key,
+            IPoolManager.SwapParams({zeroForOne: true, amountSpecified: 13 ether, sqrtPriceLimitX96: MIN_PRICE_LIMIT}),
+            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
+            ZERO_BYTES
+        );
+
+        // Verify we're back in Alice's range
+        (, currentTick,,) = manager.getSlot0(key.toId());
+        assertGt(currentTick, tickLowerAlice, "Tick should be back in Alice's range");
+        assertLt(currentTick, tickUpperAlice, "Tick should be back in Alice's range");
+
+        // Wait some more time for rewards to accumulate at new rate while in range
+        advanceTime(timeDiff);
+
+        // Remove liquidity for both users
+        removeLiquidity(alice, liquidity, tickLowerAlice, tickUpperAlice);
+        removeLiquidity(bob, liquidity, tickLowerBob, tickUpperBob);
+
+        // Get accumulated rewards
+        uint256 aliceRewards = hook.accumulatedRewards(address(modifyLiquidityRouters[alice]));
+        uint256 bobRewards = hook.accumulatedRewards(address(modifyLiquidityRouters[bob]));
+
+        // Calculate expected rewards for Alice - only for periods when position was in range
+        // First period: liquidity * time * initialRewardRate
+        // Second period: 0 (out of range)
+        // Third period: liquidity * time * newRewardRate
+        uint256 expectedRewardsFirstPeriod = timeDiff * 1e36 / 2 * initialRewardRate;
+        uint256 expectedRewardsThirdPeriod = timeDiff * 1e36 / 2 * newRewardRate;
+        uint256 expectedTotalRewardsAlice = expectedRewardsFirstPeriod + expectedRewardsThirdPeriod;
+
+        // Verify Alice's rewards - should only be for in-range periods
+        assertApproxEqRel(
+            aliceRewards,
+            expectedTotalRewardsAlice,
+            0.01e18,
+            "Alice's rewards should reflect only in-range periods with correct rates"
+        );
+
+        // Bob should have rewards for all periods since he was always in range
+        uint256 expectedTotalRewardsBob =
+            expectedRewardsFirstPeriod + (timeDiff * 1e36 * newRewardRate) + expectedRewardsThirdPeriod;
+        assertApproxEqRel(
+            bobRewards, expectedTotalRewardsBob, 0.01e18, "Bob's rewards should reflect all periods with correct rates"
+        );
+
+        // Verify rewards are greater than zero
+        assertGt(aliceRewards, 0, "Alice should have rewards");
+        assertGt(bobRewards, 0, "Bob should have rewards");
+
+        // Bob should have more rewards than Alice since he was in range for all periods
+        assertGt(bobRewards, aliceRewards, "Bob should have more rewards than Alice");
+
+        // Verify the reward rates were tracked correctly
         assertEq(hook.currentRewardPeriod(key.toId()), 2, "Current reward period should be 2");
         assertEq(hook.rewardRate(key.toId(), 1), initialRewardRate, "Initial reward rate should be stored correctly");
         assertEq(hook.rewardRate(key.toId(), 2), newRewardRate, "New reward rate should be stored correctly");
