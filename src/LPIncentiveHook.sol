@@ -23,6 +23,7 @@ contract LPIncentiveHook is BaseHook, Ownable {
 
     error NoRewardsAvailable();
     error InsufficientRewardBalance();
+    error PositionAlreadyHasRewardTarget();
 
     // State variables for tracking liquidity mining rewards
     IERC20 public immutable rewardToken;
@@ -51,6 +52,9 @@ contract LPIncentiveHook is BaseHook, Ownable {
     // Variables to keep track of the reward rate and the current reward period
     mapping(PoolId => mapping(uint256 rewardPeriod => uint256)) public rewardRate;
     mapping(PoolId => uint256) public currentRewardPeriod;
+
+    //
+    mapping(PoolId => mapping(bytes32 positionKey => address)) public rewardTarget;
 
     constructor(IPoolManager _manager, IERC20 _rewardToken, address _owner) BaseHook(_manager) Ownable(_owner) {
         rewardToken = _rewardToken;
@@ -113,7 +117,7 @@ contract LPIncentiveHook is BaseHook, Ownable {
         address sender,
         PoolKey calldata key,
         IPoolManager.ModifyLiquidityParams calldata params,
-        bytes calldata
+        bytes calldata hookData
     ) internal override returns (bytes4) {
         // maybe put this into afterINitialized
         PoolId poolId = key.toId();
@@ -123,11 +127,15 @@ contract LPIncentiveHook is BaseHook, Ownable {
         (, int24 currentTick,,) = poolManager.getSlot0(poolId);
 
         bytes32 positionKey = Position.calculatePositionKey(sender, params.tickLower, params.tickUpper, params.salt);
-
+        address rewardOwner = abi.decode(hookData, (address));
+        if (rewardTarget[poolId][positionKey] != address(0) && rewardTarget[poolId][positionKey] != rewardOwner) {
+            revert PositionAlreadyHasRewardTarget();
+        }
+        rewardTarget[poolId][positionKey] = rewardOwner;
         updateSecondsPerLiquidity(poolId);
         updatesecondsPerLiquidityOutsideForTick(poolId, params.tickLower, params.tickLower < currentTick);
         updatesecondsPerLiquidityOutsideForTick(poolId, params.tickUpper, params.tickUpper < currentTick);
-        updateUserRewards(sender, poolId, params, positionKey);
+        updateUserRewards(rewardOwner, poolId, params, positionKey);
 
         // set initial value for future calculations/ Technically only needed for the first deposit
         beforeSwapTick[poolId] = currentTick;
@@ -164,7 +172,7 @@ contract LPIncentiveHook is BaseHook, Ownable {
         updateSecondsPerLiquidity(poolId);
         updatesecondsPerLiquidityOutsideForTick(poolId, params.tickLower, params.tickLower < currentTick);
         updatesecondsPerLiquidityOutsideForTick(poolId, params.tickUpper, params.tickUpper < currentTick);
-        updateUserRewards(sender, poolId, params, positionKey);
+        updateUserRewards(rewardTarget[poolId][positionKey], poolId, params, positionKey);
 
         return (BaseHook.beforeRemoveLiquidity.selector);
     }
@@ -278,7 +286,7 @@ contract LPIncentiveHook is BaseHook, Ownable {
     }
 
     function updateUserRewards(
-        address sender,
+        address rewardOwner,
         PoolId poolId,
         IPoolManager.ModifyLiquidityParams calldata params,
         bytes32 positionKey
@@ -306,7 +314,7 @@ contract LPIncentiveHook is BaseHook, Ownable {
                 if (positionLiquidity > 0) {
                     uint256 rewards =
                         calculateRewards(totalSecondsPerLiquidity, uint256(positionLiquidity), poolId, rewardPeriod);
-                    accumulatedRewards[sender] += rewards;
+                    accumulatedRewards[rewardOwner] += rewards;
                 }
             }
             //  Update the stored secondsPerLiquidityInside for future calculations
