@@ -21,6 +21,7 @@ import {StateLibrary} from "v4-core/libraries/StateLibrary.sol";
 
 import {LPIncentiveHook} from "../src/LPIncentiveHook.sol";
 import {Position} from "v4-core/libraries/Position.sol";
+import {CustomRevert} from "v4-core/libraries/CustomRevert.sol";
 
 contract LPIncentiveHookTest is Test, Deployers {
     using PoolIdLibrary for PoolKey;
@@ -1566,7 +1567,7 @@ contract LPIncentiveHookTest is Test, Deployers {
         // Create test params
         int24 tickLower = -120;
         int24 tickUpper = 120;
-        uint256 liquidity = 100e18;
+        uint256 liquidity = 1000e18;
 
         // Add liquidity with alice as the reward target
         vm.prank(alice);
@@ -1581,10 +1582,22 @@ contract LPIncentiveHookTest is Test, Deployers {
             abi.encode(alice)
         );
 
-        // Trying to add more liquidity to the same position but with bob as reward target should fail
+        // Use the exact function selector (0x259982e5) from the modifyLiquidity function
+        // and include the additional data (0xa9e35b2f)
+        bytes4 functionSelector = bytes4(0x259982e5);
+        bytes memory additionalData = hex"a9e35b2f";
+
+        // Expect revert with wrapped error containing our custom error
         vm.prank(alice);
-        // vm.expectRevert(LPIncentiveHook.PositionAlreadyHasRewardTarget.selector); \\todo: make sure we test the right error
-        vm.expectRevert();
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CustomRevert.WrappedError.selector,
+                address(hook), // target contract
+                functionSelector,
+                abi.encodeWithSelector(LPIncentiveHook.PositionAlreadyHasRewardTarget.selector),
+                additionalData
+            )
+        );
         modifyLiquidityRouter.modifyLiquidity(
             key,
             IPoolManager.ModifyLiquidityParams({
