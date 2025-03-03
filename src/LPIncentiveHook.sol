@@ -51,9 +51,6 @@ contract LPIncentiveHook is BaseHook, Ownable {
     mapping(PoolId => mapping(uint256 rewardPeriod => uint256)) public rewardRate;
     mapping(PoolId => uint256) public currentRewardPeriod;
 
-    // Tick spacing for rewards
-    int24 public tickSpacing = 60; // Configurable Todo: check if this is correct
-
     constructor(IPoolManager _manager, IERC20 _rewardToken, address owner) BaseHook(_manager) Ownable(owner) {
         rewardToken = _rewardToken;
     }
@@ -113,8 +110,8 @@ contract LPIncentiveHook is BaseHook, Ownable {
             int24 tickUpper = oldTick < currentTick ? currentTick : oldTick;
 
             // Update all crossed ticks
-            for (int24 tick = tickLower / tickSpacing; tick <= tickUpper / tickSpacing; tick++) {
-                updatesecondsPerLiquidityOutsideForTick(poolId, tick * tickSpacing, zeroForOne);
+            for (int24 tick = tickLower / key.tickSpacing; tick <= tickUpper / key.tickSpacing; tick++) {
+                updatesecondsPerLiquidityOutsideForTick(poolId, tick * key.tickSpacing, zeroForOne);
             }
         }
 
