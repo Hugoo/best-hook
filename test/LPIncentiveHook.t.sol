@@ -703,7 +703,8 @@ contract LPIncentiveHookTest is Test, Deployers {
         // Create a second pool with different fee tier
         (PoolKey memory key2,) = initPool(token0, token1, hook, 500, SQRT_PRICE_1_1);
         vm.prank(owner);
-        hook.setRewardRate(key2.toId(), 2 * rewardRate);
+        uint256 secondTokenRewardRate = 2 * rewardRate;
+        hook.setRewardRate(key2.toId(), secondTokenRewardRate);
 
         int24 tickLower = -120;
         int24 tickUpper = 120;
@@ -764,8 +765,8 @@ contract LPIncentiveHookTest is Test, Deployers {
         // Verify rewards are proportional to total liquidity provided across both pools
         assertApproxEqRel(
             aliceRewards,
-            (liquidity1 * hook.secondsPerLiquidity(key.toId(), 1) * rewardRate * 2)
-                + (liquidity2 * hook.secondsPerLiquidity(key2.toId(), 1) * rewardRate), // Todo: this shoud actually be weighted by the tokens value!
+            (liquidity1 * hook.secondsPerLiquidity(key.toId(), 1) * secondTokenRewardRate)
+                + (liquidity2 * hook.secondsPerLiquidity(key2.toId(), 1) * rewardRate),
             0.01e18,
             "Total rewards should be proportional to total liquidity"
         );
