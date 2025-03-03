@@ -46,13 +46,13 @@ contract LPIncentiveHook is BaseHook, Ownable {
     mapping(PoolId => uint256) public beforeSwapLiquidity;
 
     // Track accumulated rewards for each user
-    mapping(address => uint256) public accumulatedRewards;
+    mapping(address user => uint256) public accumulatedRewards;
 
     // Variables to keep track of the reward rate and the current reward period
     mapping(PoolId => mapping(uint256 rewardPeriod => uint256)) public rewardRate;
     mapping(PoolId => uint256) public currentRewardPeriod;
 
-    constructor(IPoolManager _manager, IERC20 _rewardToken, address owner) BaseHook(_manager) Ownable(owner) {
+    constructor(IPoolManager _manager, IERC20 _rewardToken, address _owner) BaseHook(_manager) Ownable(_owner) {
         rewardToken = _rewardToken;
     }
 
