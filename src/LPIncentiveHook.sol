@@ -34,16 +34,17 @@ contract LPIncentiveHook is BaseHook, Ownable {
     mapping(PoolId => mapping(int24 tick => mapping(uint256 rewardPeriod => uint256))) public secondsPerLiquidityOutside;
     mapping(PoolId => mapping(int24 tick => mapping(uint256 rewardPeriod => uint256))) public
         lastLiquidityPerSecondOfTick;
-    mapping(PoolId => mapping(int24 tick => uint256)) public lastLiquidityPerSecondOfTickRewardPeriod;
+    mapping(PoolId => mapping(int24 tick => uint256)) public lastSecondsPerLiquidityOfTickRewardPeriod;
 
     // For user rewards calculation
     mapping(PoolId => mapping(bytes32 positionKey => mapping(uint256 rewardPeriod => uint256))) public
         secondsPerLiquidityInsideDeposit;
     mapping(PoolId => mapping(bytes32 positionKey => uint256)) public lastUpdateUserRewardPeriod;
 
-    // Track last tick for each pool before the swap
+    // Track last tick and liquidity for each pool before the swap
     mapping(PoolId => int24) public beforeSwapTick;
     mapping(PoolId => uint256) public beforeSwapLiquidity;
+
     // Track accumulated rewards for each user
     mapping(address => uint256) public accumulatedRewards;
 
@@ -53,18 +54,6 @@ contract LPIncentiveHook is BaseHook, Ownable {
 
     constructor(IPoolManager _manager, IERC20 _rewardToken, address owner) BaseHook(_manager) Ownable(owner) {
         rewardToken = _rewardToken;
-    }
-
-    function setRewardRate(PoolId poolId, uint256 _rewardRate) external onlyOwner {
-        updateSecondsPerLiquidity(poolId);
-        // update reward period
-        currentRewardPeriod[poolId] += 1;
-        // set new starting parameters
-        secondsPerLiquidity[poolId][currentRewardPeriod[poolId]] =
-            secondsPerLiquidity[poolId][currentRewardPeriod[poolId] - 1];
-        lastUpdateTimeOfSecondsPerLiquidity[poolId][currentRewardPeriod[poolId]] = block.timestamp;
-        // set reward rate
-        rewardRate[poolId][currentRewardPeriod[poolId]] = _rewardRate;
     }
 
     function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
@@ -193,6 +182,58 @@ contract LPIncentiveHook is BaseHook, Ownable {
         return (BaseHook.afterRemoveLiquidity.selector, BalanceDelta.wrap(0));
     }
 
+    function redeemRewards() external {
+        uint256 rewards = accumulatedRewards[msg.sender];
+        if (rewards == 0) revert NoRewardsAvailable();
+
+        if (rewardToken.balanceOf(address(this)) < rewards) {
+            revert InsufficientRewardBalance();
+        }
+
+        delete accumulatedRewards[msg.sender];
+        rewardToken.transfer(msg.sender, rewards);
+    }
+
+    /////////////////////////////////
+    /// Admin function
+    /////////////////////////////////
+
+    function setRewardRate(PoolId poolId, uint256 _rewardRate) external onlyOwner {
+        updateSecondsPerLiquidity(poolId);
+        // update reward period
+        currentRewardPeriod[poolId] += 1;
+        // set new starting parameters
+        secondsPerLiquidity[poolId][currentRewardPeriod[poolId]] =
+            secondsPerLiquidity[poolId][currentRewardPeriod[poolId] - 1];
+        lastUpdateTimeOfSecondsPerLiquidity[poolId][currentRewardPeriod[poolId]] = block.timestamp;
+        // set reward rate
+        rewardRate[poolId][currentRewardPeriod[poolId]] = _rewardRate;
+    }
+
+    /////////////////////////////////
+    /// Public view functions
+    /////////////////////////////////
+
+    function calculateSecondsPerLiquidityInside(PoolId poolId, int24 tickLower, int24 tickUpper, uint256 rewardPeriod)
+        public
+        view
+        returns (uint256)
+    {
+        uint256 secondsPerLiquidityBelow;
+        uint256 secondsPerLiquidityAbove;
+
+        secondsPerLiquidityBelow = secondsPerLiquidityOutside[poolId][tickLower][rewardPeriod];
+
+        secondsPerLiquidityAbove =
+            secondsPerLiquidity[poolId][rewardPeriod] - secondsPerLiquidityOutside[poolId][tickUpper][rewardPeriod];
+
+        return secondsPerLiquidity[poolId][rewardPeriod] - secondsPerLiquidityBelow - secondsPerLiquidityAbove;
+    }
+
+    /////////////////////////////////
+    /// Internal functions
+    /////////////////////////////////
+
     function updateSecondsPerLiquidity(PoolId poolId) internal {
         uint256 timeElapsed = block.timestamp - lastUpdateTimeOfSecondsPerLiquidity[poolId][currentRewardPeriod[poolId]];
         if (timeElapsed > 0) {
@@ -208,7 +249,7 @@ contract LPIncentiveHook is BaseHook, Ownable {
 
     function updatesecondsPerLiquidityOutsideForTick(PoolId poolId, int24 tick, bool tickWasOutside) internal {
         for (
-            uint256 currentUserRewardPeriod = lastLiquidityPerSecondOfTickRewardPeriod[poolId][tick];
+            uint256 currentUserRewardPeriod = lastSecondsPerLiquidityOfTickRewardPeriod[poolId][tick];
             currentUserRewardPeriod <= currentRewardPeriod[poolId];
             currentUserRewardPeriod++
         ) {
@@ -233,7 +274,7 @@ contract LPIncentiveHook is BaseHook, Ownable {
             lastLiquidityPerSecondOfTick[poolId][tick][currentUserRewardPeriod] =
                 secondsPerLiquidity[poolId][currentUserRewardPeriod];
         }
-        lastLiquidityPerSecondOfTickRewardPeriod[poolId][tick] = currentRewardPeriod[poolId];
+        lastSecondsPerLiquidityOfTickRewardPeriod[poolId][tick] = currentRewardPeriod[poolId];
     }
 
     function updateUserRewards(
@@ -274,22 +315,6 @@ contract LPIncentiveHook is BaseHook, Ownable {
         lastUpdateUserRewardPeriod[poolId][positionKey] = currentRewardPeriod[poolId];
     }
 
-    function calculateSecondsPerLiquidityInside(PoolId poolId, int24 tickLower, int24 tickUpper, uint256 rewardPeriod)
-        public
-        view
-        returns (uint256)
-    {
-        uint256 secondsPerLiquidityBelow;
-        uint256 secondsPerLiquidityAbove;
-
-        secondsPerLiquidityBelow = secondsPerLiquidityOutside[poolId][tickLower][rewardPeriod];
-
-        secondsPerLiquidityAbove =
-            secondsPerLiquidity[poolId][rewardPeriod] - secondsPerLiquidityOutside[poolId][tickUpper][rewardPeriod];
-
-        return secondsPerLiquidity[poolId][rewardPeriod] - secondsPerLiquidityBelow - secondsPerLiquidityAbove;
-    }
-
     function calculateRewards(uint256 totalSecondsPerLiquidity, uint256 liquidity, PoolId poolId, uint256 rewardPeriod)
         internal
         view
@@ -297,17 +322,5 @@ contract LPIncentiveHook is BaseHook, Ownable {
     {
         // Adjust reward calculation to properly account for time and liquidity
         return (totalSecondsPerLiquidity * liquidity * rewardRate[poolId][rewardPeriod]);
-    }
-
-    function redeemRewards() external {
-        uint256 rewards = accumulatedRewards[msg.sender];
-        if (rewards == 0) revert NoRewardsAvailable();
-
-        if (rewardToken.balanceOf(address(this)) < rewards) {
-            revert InsufficientRewardBalance();
-        }
-
-        delete accumulatedRewards[msg.sender];
-        rewardToken.transfer(msg.sender, rewards);
     }
 }
