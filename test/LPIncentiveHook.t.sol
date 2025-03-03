@@ -1056,20 +1056,20 @@ contract LPIncentiveHookTest is Test, Deployers {
         // Second period had mid rate with full liquidity, third period had final rate with half liquidity
         // So if we normalize (divide third period by 1/3 for liquidity and multiply by 2 for rate difference),
         // they should be roughly equal
-        uint256 normalizedThirdPeriodRewards = aliceThirdPeriodRewards * 6; // Adjust for both 1/3 liquidity and quarter rate
+        // uint256 normalizedThirdPeriodRewards = aliceThirdPeriodRewards * 6; // Adjust for both 1/3 liquidity and quarter rate
         assertApproxEqRel(
             aliceSecondPeriodRewards,
-            normalizedThirdPeriodRewards,
+            aliceThirdPeriodRewards * 6,
             0.05e18,
             "Normalized rewards should be approximately equal across periods"
         );
 
         // Bob maintained full liquidity throughout, so his rewards should follow rate ratios
-        uint256 expectedBobFinalPeriodRewards =
-            bobRewardsAfterFirstPeriod + (timeDiff * midRate) * 1e36 * 2 / 3 + (timeDiff * finalRate) * 1e36;
+        // uint256 expectedBobFinalPeriodRewards =
+        // bobRewardsAfterFirstPeriod + (timeDiff * midRate) * 1e36 * 2 / 3 + (timeDiff * finalRate) * 1e36;
         assertApproxEqRel(
             bobFinalRewards,
-            expectedBobFinalPeriodRewards,
+            bobRewardsAfterFirstPeriod + (timeDiff * midRate) * 1e36 * 2 / 3 + (timeDiff * finalRate) * 1e36,
             0.1e18,
             "Bob's rewards should follow rate changes proportionally"
         );
@@ -1344,6 +1344,227 @@ contract LPIncentiveHookTest is Test, Deployers {
         assertApproxEqRel(
             aliceRewards * 3, bobRewards * 7, 0.1e18, "Alice should have approximately twice the rewards of Bob"
         );
+    }
+
+    function test_RedeemRewards() public {
+        deal(Currency.unwrap(rewardToken), address(hook), 1e52);
+        // Deal tokens to alice
+        deal(Currency.unwrap(token0), alice, 100000 ether);
+        deal(Currency.unwrap(token1), alice, 100000 ether);
+
+        // Approve tokens for router
+        vm.startPrank(alice);
+        IERC20(Currency.unwrap(token0)).approve(address(modifyLiquidityRouters[alice]), type(uint256).max);
+        IERC20(Currency.unwrap(token1)).approve(address(modifyLiquidityRouters[alice]), type(uint256).max);
+        vm.stopPrank();
+
+        // Create test params
+        int24 tickLower = -120;
+        int24 tickUpper = 120;
+        uint256 liquidity = 1000e18;
+
+        // Add liquidity
+        addLiquidity(alice, liquidity, tickLower, tickUpper);
+
+        // Wait some time for rewards to accumulate
+        advanceTime(1000);
+
+        // Remove liquidity
+        removeLiquidity(alice, liquidity, tickLower, tickUpper);
+
+        // Get accumulated rewards
+        uint256 aliceRewards = hook.accumulatedRewards(address(modifyLiquidityRouters[alice]));
+        assertGt(aliceRewards, 0, "Alice should have rewards");
+
+        // Record contract balance before redemption
+        uint256 contractBalanceBefore = IERC20(Currency.unwrap(rewardToken)).balanceOf(address(hook));
+        uint256 aliceBalanceBefore =
+            IERC20(Currency.unwrap(rewardToken)).balanceOf(address(modifyLiquidityRouters[alice]));
+
+        // Claim rewards
+        vm.prank(address(modifyLiquidityRouters[alice]));
+        hook.redeemRewards();
+
+        // Verify rewards were sent
+        uint256 contractBalanceAfter = IERC20(Currency.unwrap(rewardToken)).balanceOf(address(hook));
+        uint256 aliceBalanceAfter =
+            IERC20(Currency.unwrap(rewardToken)).balanceOf(address(modifyLiquidityRouters[alice]));
+
+        assertEq(
+            contractBalanceAfter,
+            contractBalanceBefore - aliceRewards,
+            "Contract balance should decrease by reward amount"
+        );
+        assertEq(aliceBalanceAfter, aliceBalanceBefore + aliceRewards, "Alice balance should increase by reward amount");
+
+        // Verify rewards were reset to zero
+        assertEq(
+            hook.accumulatedRewards(address(modifyLiquidityRouters[alice])),
+            0,
+            "Accumulated rewards should be reset to zero"
+        );
+    }
+
+    function test_RedeemRewardsFailsWhenNoRewards() public {
+        // Attempt to claim when no rewards are available
+        vm.prank(charlie);
+        vm.expectRevert(LPIncentiveHook.NoRewardsAvailable.selector);
+        hook.redeemRewards();
+    }
+
+    function test_RedeemRewardsFailsWithInsufficientBalance() public {
+        deal(Currency.unwrap(rewardToken), address(hook), 1e39);
+
+        // Deal tokens to alice
+        deal(Currency.unwrap(token0), alice, 100000 ether);
+        deal(Currency.unwrap(token1), alice, 100000 ether);
+
+        // Approve tokens for router
+        vm.startPrank(alice);
+        IERC20(Currency.unwrap(token0)).approve(address(modifyLiquidityRouters[alice]), type(uint256).max);
+        IERC20(Currency.unwrap(token1)).approve(address(modifyLiquidityRouters[alice]), type(uint256).max);
+        vm.stopPrank();
+
+        // Create test params
+        int24 tickLower = -120;
+        int24 tickUpper = 120;
+        uint256 liquidity = 1000e18;
+
+        // Add liquidity
+        addLiquidity(alice, liquidity, tickLower, tickUpper);
+
+        // Wait some time for rewards to accumulate
+        advanceTime(1000);
+
+        // Remove liquidity
+        removeLiquidity(alice, liquidity, tickLower, tickUpper);
+
+        // Get accumulated rewards
+        uint256 aliceRewards = hook.accumulatedRewards(address(modifyLiquidityRouters[alice]));
+        assertGt(aliceRewards, 0, "Alice should have rewards");
+
+        // Drain contract of rewards
+        deal(Currency.unwrap(rewardToken), address(hook), 0);
+
+        // Attempt to claim rewards with insufficient contract balance
+        vm.prank(address(modifyLiquidityRouters[alice]));
+        vm.expectRevert(LPIncentiveHook.InsufficientRewardBalance.selector);
+        hook.redeemRewards();
+    }
+
+    function test_MultipleUsersRedeemRewards() public {
+        deal(Currency.unwrap(rewardToken), address(hook), 1e52);
+
+        // Deal tokens to users
+        deal(Currency.unwrap(token0), alice, 100000 ether);
+        deal(Currency.unwrap(token1), alice, 100000 ether);
+        deal(Currency.unwrap(token0), bob, 100000 ether);
+        deal(Currency.unwrap(token1), bob, 100000 ether);
+
+        // Approve tokens for routers
+        vm.startPrank(alice);
+        IERC20(Currency.unwrap(token0)).approve(address(modifyLiquidityRouters[alice]), type(uint256).max);
+        IERC20(Currency.unwrap(token1)).approve(address(modifyLiquidityRouters[alice]), type(uint256).max);
+        vm.stopPrank();
+
+        vm.startPrank(bob);
+        IERC20(Currency.unwrap(token0)).approve(address(modifyLiquidityRouters[bob]), type(uint256).max);
+        IERC20(Currency.unwrap(token1)).approve(address(modifyLiquidityRouters[bob]), type(uint256).max);
+        vm.stopPrank();
+
+        int24 tickLower = -120;
+        int24 tickUpper = 120;
+        uint256 liquidity = 1000e18;
+
+        // Add liquidity for both users
+        addLiquidity(alice, liquidity, tickLower, tickUpper);
+        addLiquidity(bob, liquidity, tickLower, tickUpper);
+
+        // Wait for rewards to accumulate
+        advanceTime(1000);
+
+        // Remove liquidity
+        removeLiquidity(alice, liquidity, tickLower, tickUpper);
+        removeLiquidity(bob, liquidity, tickLower, tickUpper);
+
+        // Get accumulated rewards
+        uint256 aliceRewards = hook.accumulatedRewards(address(modifyLiquidityRouters[alice]));
+        uint256 bobRewards = hook.accumulatedRewards(address(modifyLiquidityRouters[bob]));
+
+        assertGt(aliceRewards, 0, "Alice should have rewards");
+        assertGt(bobRewards, 0, "Bob should have rewards");
+
+        // Record balances before redemption
+        uint256 contractBalanceBefore = IERC20(Currency.unwrap(rewardToken)).balanceOf(address(hook));
+        uint256 aliceBalanceBefore =
+            IERC20(Currency.unwrap(rewardToken)).balanceOf(address(modifyLiquidityRouters[alice]));
+        uint256 bobBalanceBefore = IERC20(Currency.unwrap(rewardToken)).balanceOf(address(modifyLiquidityRouters[bob]));
+
+        // Claim rewards
+        vm.prank(address(modifyLiquidityRouters[alice]));
+        hook.redeemRewards();
+
+        vm.prank(address(modifyLiquidityRouters[bob]));
+        hook.redeemRewards();
+
+        // Verify rewards were sent
+        uint256 contractBalanceAfter = IERC20(Currency.unwrap(rewardToken)).balanceOf(address(hook));
+        uint256 aliceBalanceAfter =
+            IERC20(Currency.unwrap(rewardToken)).balanceOf(address(modifyLiquidityRouters[alice]));
+        uint256 bobBalanceAfter = IERC20(Currency.unwrap(rewardToken)).balanceOf(address(modifyLiquidityRouters[bob]));
+
+        assertEq(
+            contractBalanceAfter,
+            contractBalanceBefore - aliceRewards - bobRewards,
+            "Contract balance should decrease by total rewards"
+        );
+        assertEq(aliceBalanceAfter, aliceBalanceBefore + aliceRewards, "Alice balance should increase by reward amount");
+        assertEq(bobBalanceAfter, bobBalanceBefore + bobRewards, "Bob balance should increase by reward amount");
+
+        // Verify rewards were reset to zero
+        assertEq(
+            hook.accumulatedRewards(address(modifyLiquidityRouters[alice])),
+            0,
+            "Alice accumulated rewards should be reset"
+        );
+        assertEq(
+            hook.accumulatedRewards(address(modifyLiquidityRouters[bob])), 0, "Bob accumulated rewards should be reset"
+        );
+    }
+
+    function test_RedeemRewardsTwice() public {
+        deal(Currency.unwrap(rewardToken), address(hook), 1e50);
+        // Deal tokens to alice
+        deal(Currency.unwrap(token0), alice, 100000 ether);
+        deal(Currency.unwrap(token1), alice, 100000 ether);
+
+        // Approve tokens for router
+        vm.startPrank(alice);
+        IERC20(Currency.unwrap(token0)).approve(address(modifyLiquidityRouters[alice]), type(uint256).max);
+        IERC20(Currency.unwrap(token1)).approve(address(modifyLiquidityRouters[alice]), type(uint256).max);
+        vm.stopPrank();
+
+        int24 tickLower = -120;
+        int24 tickUpper = 120;
+        uint256 liquidity = 1000e18;
+
+        // Add liquidity
+        addLiquidity(alice, liquidity, tickLower, tickUpper);
+
+        // Wait for rewards to accumulate
+        advanceTime(1000);
+
+        // Remove liquidity
+        removeLiquidity(alice, liquidity, tickLower, tickUpper);
+
+        // First redemption should succeed
+        vm.prank(address(modifyLiquidityRouters[alice]));
+        hook.redeemRewards();
+
+        // Second redemption should fail with NoRewardsAvailable
+        vm.prank(address(modifyLiquidityRouters[alice]));
+        vm.expectRevert(LPIncentiveHook.NoRewardsAvailable.selector);
+        hook.redeemRewards();
     }
 
     // -----------------------------
