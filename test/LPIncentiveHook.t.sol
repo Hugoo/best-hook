@@ -1570,17 +1570,7 @@ contract LPIncentiveHookTest is Test, Deployers {
         uint256 liquidity = 1000e18;
 
         // Add liquidity with alice as the reward target
-        vm.prank(alice);
-        modifyLiquidityRouter.modifyLiquidity(
-            key,
-            IPoolManager.ModifyLiquidityParams({
-                tickLower: tickLower,
-                tickUpper: tickUpper,
-                liquidityDelta: int256(liquidity),
-                salt: bytes32(0)
-            }),
-            abi.encode(alice)
-        );
+        addLiquidity(alice, liquidity, tickLower, tickUpper, bytes32(0));
 
         // Use the exact function selector (0x259982e5) from the modifyLiquidity function
         // and include the additional data (0xa9e35b2f)
@@ -1626,31 +1616,11 @@ contract LPIncentiveHookTest is Test, Deployers {
         int24 tickUpper = 120;
         uint256 liquidity = 1000e18;
 
-        // Add liquidity with alice as the reward target
-        vm.prank(alice);
-        modifyLiquidityRouter.modifyLiquidity(
-            key,
-            IPoolManager.ModifyLiquidityParams({
-                tickLower: tickLower,
-                tickUpper: tickUpper,
-                liquidityDelta: int256(liquidity),
-                salt: bytes32(0)
-            }),
-            abi.encode(alice)
-        );
+        // Add liquidity with Alice as the reward target
+        addLiquidity(alice, liquidity, tickLower, tickUpper, bytes32(0));
 
         // Adding more liquidity to the same position with the same reward target should succeed
-        vm.prank(alice);
-        modifyLiquidityRouter.modifyLiquidity(
-            key,
-            IPoolManager.ModifyLiquidityParams({
-                tickLower: tickLower,
-                tickUpper: tickUpper,
-                liquidityDelta: int256(liquidity),
-                salt: bytes32(0)
-            }),
-            abi.encode(alice)
-        );
+        addLiquidity(alice, liquidity, tickLower, tickUpper, bytes32(0));
 
         // Verify the added liquidity (should be double)
         bytes32 positionKey =
@@ -1668,14 +1638,22 @@ contract LPIncentiveHookTest is Test, Deployers {
     }
 
     function addLiquidity(address user, uint256 liquidityToAdd, int24 tickLower, int24 tickUpper) internal {
-        adjustLiquidity(user, int256(liquidityToAdd), tickLower, tickUpper);
+        adjustLiquidity(user, int256(liquidityToAdd), tickLower, tickUpper, bytes32(uint256(uint160(user))));
+    }
+
+    function addLiquidity(address user, uint256 liquidityToAdd, int24 tickLower, int24 tickUpper, bytes32 salt)
+        internal
+    {
+        adjustLiquidity(user, int256(liquidityToAdd), tickLower, tickUpper, salt);
     }
 
     function removeLiquidity(address user, uint256 liquidityToRemove, int24 tickLower, int24 tickUpper) internal {
-        adjustLiquidity(user, -int256(liquidityToRemove), tickLower, tickUpper);
+        adjustLiquidity(user, -int256(liquidityToRemove), tickLower, tickUpper, bytes32(uint256(uint160(user))));
     }
 
-    function adjustLiquidity(address user, int256 liquidityDelta, int24 tickLower, int24 tickUpper) internal {
+    function adjustLiquidity(address user, int256 liquidityDelta, int24 tickLower, int24 tickUpper, bytes32 salt)
+        internal
+    {
         vm.prank(user);
         modifyLiquidityRouter.modifyLiquidity(
             key,
@@ -1683,7 +1661,7 @@ contract LPIncentiveHookTest is Test, Deployers {
                 tickLower: tickLower,
                 tickUpper: tickUpper,
                 liquidityDelta: liquidityDelta,
-                salt: bytes32(uint256(uint160(user)))
+                salt: salt
             }),
             abi.encode(user)
         );
