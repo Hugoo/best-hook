@@ -1209,9 +1209,9 @@ contract LPIncentiveHookTest is Test, Deployers {
         //          price
         //  -240 --- -60 --- 0 --- 60 --- 240
         //
-        //  =====================               <- Alice (-240 to 60)
-        //              ===================     <- Bob   (-60 to 240)
-        //              ===                     <- Overlap (-60 to 60)
+        //    ----------------------              <- Alice   (-240 to 60)
+        //             ----------------------     <- Bob     (-60 to 240)
+        //             =============              <- Overlap (-60 to 60)
 
         // Deal tokens to users
         deal(Currency.unwrap(token0), alice, 100000 ether);
