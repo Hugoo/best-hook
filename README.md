@@ -1,28 +1,18 @@
-# Best Hook
+# Uniswap V4 Hook - Priority is all you need[^1]
 
 [Uniswap V4](https://docs.uniswap.org/contracts/v4/overview) hook that boosts LPs fees.
 
 This project is part of the [Uniswap Hook Incubator Cohort 4](https://atrium.academy/uniswap).
 
-## Problem
+## 🤖 MEV Protection Hook
 
-WIP
+### Problem
 
-## Solution
+Arbitrageurs and other MEV actors often submit transactions with unusually high priority to capture profitable opportunities like arbitrage. However, the value they extract typically bypasses the protocol and its LPs.
 
-WIP
+### Solution
 
-## Features
-
-This repo provides basic Uniswap V4 hook features that aim to boost LPs rewards while improving swappers fees.
-
-### 🤖 MEV Protection
-
-WIP
-
-### 💧 Liquidity Mining
-
-WIP
+This hook dynamically detects high-priority transactions and adjusts fees in real-time to capture a portion of that value, redistributing it back to the liquidity providers.
 
 ## Usage
 
@@ -31,17 +21,25 @@ This is a [Foundry](https://book.getfoundry.sh/) project.
 ### Build
 
 ```shell
-$ forge build
+forge build
 ```
 
 ### Test
 
 ```shell
-$ forge test
+forge test
 ```
 
-## Resources
+## Team
 
-- <https://docs.uniswap.org/contracts/v4/overview>
-- <https://www.paradigm.xyz/2021/05/liquidity-mining-on-uniswap-v3>
-- <https://www.paradigm.xyz/2024/06/priority-is-all-you-need>
+- [@siows](https://github.com/siosw)
+- [@Hugoo](https://github.com/Hugoo)
+
+## Resources & Related projects
+
+- [Uniswap V4 Docs](https://docs.uniswap.org/contracts/v4/overview)
+- [Priority is all you need by Dan Robinson & Dave White](https://www.paradigm.xyz/2024/06/priority-is-all-you-need)
+- [Arrakis](https://arrakis.finance)
+- Angstrom by [Sorella Labs](https://sorellalabs.xyz)
+
+[^1]: https://youtu.be/EmkwyVe04kY?t=2026
