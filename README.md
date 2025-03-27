@@ -14,7 +14,7 @@ Arbitrageurs and other MEV actors often submit transactions with unusually high 
 
 This hook dynamically detects high-priority transactions and adjusts fees in real-time to capture a portion of that value, redistributing it back to the liquidity providers.
 
-## Usage
+## 📑 Usage
 
 This is a [Foundry](https://book.getfoundry.sh/) project.
 
@@ -30,12 +30,12 @@ forge build
 forge test
 ```
 
-## Team
+## 👨‍💻 Team
 
 - [@siows](https://github.com/siosw)
 - [@Hugoo](https://github.com/Hugoo)
 
-## Resources & Related projects
+## 📚 Resources & Related projects
 
 - [Uniswap V4 Docs](https://docs.uniswap.org/contracts/v4/overview)
 - [Priority is all you need by Dan Robinson & Dave White](https://www.paradigm.xyz/2024/06/priority-is-all-you-need)
